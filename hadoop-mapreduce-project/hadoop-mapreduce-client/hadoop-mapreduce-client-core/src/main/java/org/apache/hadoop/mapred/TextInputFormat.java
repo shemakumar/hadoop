@@ -57,7 +57,7 @@ public class TextInputFormat extends FileInputFormat<LongWritable, Text>
                                           InputSplit genericSplit, JobConf job,
                                           Reporter reporter)
     throws IOException {
-    
+    LOG.warn("Pranav inside TextInputFormat.java getRecordReader");
     reporter.setStatus(genericSplit.toString());
     String delimiter = job.get("textinputformat.record.delimiter");
     byte[] recordDelimiterBytes = null;

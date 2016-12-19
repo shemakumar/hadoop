@@ -69,6 +69,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Constructor;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -239,6 +240,7 @@ import com.google.common.net.InetAddresses;
 public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     DataEncryptionKeyFactory {
   public static final Log LOG = LogFactory.getLog(DFSClient.class);
+  private DFSClientGuardrails dfsClientGuardrails;
   public static final long SERVER_DEFAULTS_VALIDITY_PERIOD = 60 * 60 * 1000L; // 1 hour
   static final int TCP_WINDOW_SIZE = 128 * 1024; // 128 KB
 
@@ -600,7 +602,25 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     throws IOException {
     this(nameNodeUri, null, conf, stats);
   }
-  
+
+  public DFSClientGuardrails getDFSClientGuradrails() {
+    return dfsClientGuardrails;
+  }
+
+  private void flipkartConfigureDFSGuardrails(Configuration conf) {
+    try {
+      LOG.info(String.format("Creating instance of %s", DFSClientGuardrails.DFS_GUARDRAIL_CLASS_VALUE));
+      Class cls = Class.forName(DFSClientGuardrails.DFS_GUARDRAIL_CLASS_VALUE);
+      if (!DFSClientGuardrails.class.isAssignableFrom(cls)) {
+        throw new RuntimeException( DFSClientGuardrails.DFS_GUARDRAIL_CLASS_VALUE +
+          " doesn't implement DFSClientGuardrails.class");
+      }
+      Constructor constructor = cls.getConstructor(Configuration.class);
+      dfsClientGuardrails = (DFSClientGuardrails) constructor.newInstance(conf);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
   /** 
    * Create a new DFSClient connected to the given nameNodeUri or rpcNamenode.
    * If HA is enabled and a positive value is set for 
@@ -613,6 +633,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public DFSClient(URI nameNodeUri, ClientProtocol rpcNamenode,
       Configuration conf, FileSystem.Statistics stats)
     throws IOException {
+    flipkartConfigureDFSGuardrails(conf);
     // Copy only the required DFSClient configuration
     this.dfsClientConf = new Conf(conf);
     if (this.dfsClientConf.useLegacyBlockReaderLocal) {
@@ -1207,6 +1228,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   @VisibleForTesting
   public LocatedBlocks getLocatedBlocks(String src, long start, long length)
       throws IOException {
+    dfsClientGuardrails.canReadFromLocation(src);
     return callGetBlockLocations(namenode, src, start, length);
   }
 
@@ -1493,6 +1515,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   public DFSInputStream open(String src, int buffersize, boolean verifyChecksum)
       throws IOException, UnresolvedLinkException {
+    dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     //    Get block info from namenode
     return new DFSInputStream(this, src, buffersize, verifyChecksum);
@@ -1648,6 +1671,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
                              int buffersize,
                              ChecksumOpt checksumOpt,
                              InetSocketAddress[] favoredNodes) throws IOException {
+    dfsClientGuardrails.canWriteToLocation(src);
     checkOpen();
     if (permission == null) {
       permission = FsPermission.getFileDefault();
@@ -1799,6 +1823,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
 
   private DFSOutputStream append(String src, int buffersize, Progressable progress) 
       throws IOException {
+    dfsClientGuardrails.canWriteToLocation(src);
     checkOpen();
     final DFSOutputStream result = callAppend(src, buffersize, progress);
     beginFileLease(result.getFileId(), result);
@@ -1876,6 +1901,10 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * See {@link ClientProtocol#concat(String, String [])}. 
    */
   public void concat(String trg, String [] srcs) throws IOException {
+    dfsClientGuardrails.canWriteToLocation(trg);
+    for (String s : srcs) {
+      dfsClientGuardrails.canWriteToLocation(s);
+    }
     checkOpen();
     try {
       namenode.concat(trg, srcs);
@@ -1912,6 +1941,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   @Deprecated
   public boolean delete(String src) throws IOException {
+    dfsClientGuardrails.canWriteToLocation(src);
     checkOpen();
     return namenode.delete(src, true);
   }
@@ -1924,6 +1954,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#delete(String, boolean)
    */
   public boolean delete(String src, boolean recursive) throws IOException {
+    dfsClientGuardrails.canWriteToLocation(src);
     checkOpen();
     try {
       return namenode.delete(src, recursive);
@@ -1939,6 +1970,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   /** Implemented using getFileInfo(src)
    */
   public boolean exists(String src) throws IOException {
+    dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     return getFileInfo(src) != null;
   }
@@ -1964,6 +1996,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public DirectoryListing listPaths(String src,  byte[] startAfter,
       boolean needLocation) 
     throws IOException {
+    dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
       return namenode.getListing(src, startAfter, needLocation);
@@ -1983,6 +2016,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#getFileInfo(String) for description of exceptions
    */
   public HdfsFileStatus getFileInfo(String src) throws IOException {
+    dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
       return namenode.getFileInfo(src);
@@ -2017,6 +2051,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#getFileLinkInfo(String)
    */
   public HdfsFileStatus getFileLinkInfo(String src) throws IOException {
+    dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
       return namenode.getFileLinkInfo(src);
@@ -2459,6 +2494,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   public void deleteSnapshot(String snapshotRoot, String snapshotName)
       throws IOException {
+    dfsClientGuardrails.canWriteToLocation(snapshotRoot);
     try {
       namenode.deleteSnapshot(snapshotRoot, snapshotName);
     } catch(RemoteException re) {
@@ -2476,6 +2512,8 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   public void renameSnapshot(String snapshotDir, String snapshotOldName,
       String snapshotNewName) throws IOException {
+    dfsClientGuardrails.canWriteToLocation(snapshotDir);
+    dfsClientGuardrails.canWriteToLocation(snapshotOldName);
     checkOpen();
     try {
       namenode.renameSnapshot(snapshotDir, snapshotOldName, snapshotNewName);
@@ -2506,6 +2544,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#allowSnapshot(String snapshotRoot)
    */
   public void allowSnapshot(String snapshotRoot) throws IOException {
+    dfsClientGuardrails.canWriteToLocation(snapshotRoot);
     checkOpen();
     try {
       namenode.allowSnapshot(snapshotRoot);
@@ -2520,6 +2559,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#disallowSnapshot(String snapshotRoot)
    */
   public void disallowSnapshot(String snapshotRoot) throws IOException {
+    dfsClientGuardrails.canWriteToLocation(snapshotRoot);
     checkOpen();
     try {
       namenode.disallowSnapshot(snapshotRoot);
@@ -2535,6 +2575,8 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   public SnapshotDiffReport getSnapshotDiffReport(String snapshotDir,
       String fromSnapshot, String toSnapshot) throws IOException {
+    dfsClientGuardrails.canWriteToLocation(snapshotDir);
+    dfsClientGuardrails.canWriteToLocation(fromSnapshot);
     checkOpen();
     try {
       return namenode.getSnapshotDiffReport(snapshotDir,
@@ -2669,6 +2711,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#metaSave(String)
    */
   public void metaSave(String pathname) throws IOException {
+    dfsClientGuardrails.canWriteToLocation(pathname);
     namenode.metaSave(pathname);
   }
 
@@ -2740,6 +2783,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public boolean primitiveMkdir(String src, FsPermission absPermission, 
     boolean createParent)
     throws IOException {
+    dfsClientGuardrails.canWriteToLocation(src);
     checkOpen();
     if (absPermission == null) {
       absPermission = 
@@ -2773,6 +2817,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   ContentSummary getContentSummary(String src) throws IOException {
     try {
+      dfsClientGuardrails.canReadFromLocation(src);
       return namenode.getContentSummary(src);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2787,6 +2832,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   void setQuota(String src, long namespaceQuota, long diskspaceQuota) 
       throws IOException {
+    dfsClientGuardrails.canWriteToLocation(src);
     // sanity check
     if ((namespaceQuota <= 0 && namespaceQuota != HdfsConstants.QUOTA_DONT_SET &&
          namespaceQuota != HdfsConstants.QUOTA_RESET) ||
@@ -2815,6 +2861,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#setTimes(String, long, long)
    */
   public void setTimes(String src, long mtime, long atime) throws IOException {
+    dfsClientGuardrails.canWriteToLocation(src);
     checkOpen();
     try {
       namenode.setTimes(src, mtime, atime);
@@ -3070,6 +3117,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   }
 
   public void checkAccess(String src, FsAction mode) throws IOException {
+    dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
       namenode.checkAccess(src, mode);

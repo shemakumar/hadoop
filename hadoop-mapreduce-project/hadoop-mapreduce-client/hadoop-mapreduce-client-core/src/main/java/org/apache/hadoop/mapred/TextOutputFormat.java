@@ -22,6 +22,8 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.fs.FileSystem;
@@ -40,7 +42,8 @@ import org.apache.hadoop.util.*;
 @InterfaceAudience.Public
 @InterfaceStability.Stable
 public class TextOutputFormat<K, V> extends FileOutputFormat<K, V> {
-
+  public static final Log LOG =
+    LogFactory.getLog(TextOutputFormat.class);
   protected static class LineRecordWriter<K, V>
     implements RecordWriter<K, V> {
     private static final String utf8 = "UTF-8";
@@ -86,6 +89,7 @@ public class TextOutputFormat<K, V> extends FileOutputFormat<K, V> {
 
     public synchronized void write(K key, V value)
       throws IOException {
+      LOG.warn("Pranav inside TextOutputFormat.java write");
 
       boolean nullKey = key == null || key instanceof NullWritable;
       boolean nullValue = value == null || value instanceof NullWritable;
@@ -114,6 +118,7 @@ public class TextOutputFormat<K, V> extends FileOutputFormat<K, V> {
                                                   String name,
                                                   Progressable progress)
     throws IOException {
+    LOG.warn("Pranav inside TextOutputFormat.java getRecordWriter");
     boolean isCompressed = getCompressOutput(job);
     String keyValueSeparator = job.get("mapreduce.output.textoutputformat.separator", 
                                        "\t");

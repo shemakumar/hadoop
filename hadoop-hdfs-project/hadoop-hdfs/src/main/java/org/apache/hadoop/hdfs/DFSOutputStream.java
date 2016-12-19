@@ -1853,6 +1853,7 @@ public class DFSOutputStream extends FSOutputSummer
   @Override
   protected synchronized void writeChunk(byte[] b, int offset, int len,
       byte[] checksum, int ckoff, int cklen) throws IOException {
+    dfsClient.getDFSClientGuradrails().canWriteFurther(src, currentSeqno*blockSize);
     dfsClient.checkOpen();
     checkClosed();
 

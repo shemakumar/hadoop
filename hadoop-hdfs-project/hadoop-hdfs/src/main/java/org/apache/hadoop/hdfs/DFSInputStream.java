@@ -783,6 +783,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
   }
 
   private int readWithStrategy(ReaderStrategy strategy, int off, int len) throws IOException {
+    dfsClient.getDFSClientGuradrails().canReadFurther(src, readStatistics.getTotalBytesRead());
     dfsClient.checkOpen();
     if (closed) {
       throw new IOException("Stream closed");

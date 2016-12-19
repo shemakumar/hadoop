@@ -19,6 +19,7 @@
 package org.apache.hadoop.mapreduce;
 
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.net.URI;
 import java.security.PrivilegedExceptionAction;
 
@@ -1279,6 +1280,28 @@ public class Job extends JobContextImpl implements JobContext {
       ClientProtocol submitClient) throws IOException {
     return new JobSubmitter(fs, submitClient);
   }
+
+  private void flipkartAdjustConfiguration() {
+
+    if (this.getConfiguration().get(AdjustJobConfiguration.BADGER_PROCESSID_CONF) == null) {
+      throw new RuntimeException("badger.mapred.fact.processId property is not set");
+    }
+    try {
+      //hard code the ADJUST_JOBCONFIG_CLASS to ensure it can't be overridden
+      LOG.info(String.format("Creating instance of %s", AdjustJobConfiguration.ADJUST_JOBCONFIG_CLASS_VALUE));
+      Class cls = Class.forName(AdjustJobConfiguration.ADJUST_JOBCONFIG_CLASS_VALUE);
+      if (!AdjustJobConfiguration.class.isAssignableFrom(cls)) {
+        throw new RuntimeException(AdjustJobConfiguration.ADJUST_JOBCONFIG_CLASS_VALUE +
+          " doesn't implement AdjustJobConfiguration.class");
+      }
+      Constructor constructor = cls.getConstructor(Long.class);
+      Long processID = Long.parseLong(this.getConfiguration().get(AdjustJobConfiguration.BADGER_PROCESSID_CONF));
+      AdjustJobConfiguration adjustJobConfiguration = (AdjustJobConfiguration) constructor.newInstance(processID);
+      adjustJobConfiguration.adjustJobConfiguration(this.getConfiguration());
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
   /**
    * Submit the job to the cluster and return immediately.
    * @throws IOException
@@ -1286,6 +1309,9 @@ public class Job extends JobContextImpl implements JobContext {
   public void submit() 
          throws IOException, InterruptedException, ClassNotFoundException {
     ensureState(JobState.DEFINE);
+
+    flipkartAdjustConfiguration();
+
     setUseNewAPI();
     connect();
     final JobSubmitter submitter = 
