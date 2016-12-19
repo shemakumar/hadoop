@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<configuration>
+    <property>
+        <name>fdp.plat.mr.configbucket.name</name>
+        <value>prod-fdpflow-mrsrvc-a</value>
+    </property>
+    <property>
+        <name>mapreduce.application.framework.path</name>
+        <value>/projects/pranavtesting/hadoop-2.6.0.tar.gz</value>
+    </property>
+    <property>
+        <name>mapreduce.application.classpath</name>
+        <value>$PWD/hadoop-2.6.0.tar.gz/hadoop-2.6.0/share/hadoop/mapreduce/*,$PWD/hadoop-2.6.0.tar.gz/hadoop-2.6.0/share/hadoop/mapreduce/lib/*,$PWD/hadoop-2.6.0.tar.gz/hadoop-2.6.0/share/hadoop/common/*,$PWD/hadoop-2.6.0.tar.gz/hadoop-2.6.0/share/hadoop/common/lib/*,$PWD/hadoop-2.6.0.tar.gz/hadoop-2.6.0/share/hadoop/hdfs/*,$PWD/hadoop-2.6.0.tar.gz/hadoop-2.6.0/share/hadoop/hdfs/lib/*,/usr/hdp/current/hadoop-yarn-client/*,/usr/hdp/current/hadoop-yarn-client/lib/*,/usr/hdp/current/hadoop-client/*,/usr/hdp/current/hadoop-client/lib/*,$PWD/hadoop-2.6.0.tar.gz/hadoop-2.6.0/share/hadoop/fdp-guardrails/*,$PWD/hadoop-2.6.0.tar.gz/hadoop-2.6.0/share/hadoop/fdp-guardrails/lib/*,/usr/hdp/2.2.0.0-2041/hadoop/lib/hadoop-lzo-0.6.0.2.2.0.0-2041.jar,/etc/hadoop/conf/secure</value>
+    </property>
+</configuration>
