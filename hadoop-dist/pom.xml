@@ -52,6 +52,12 @@
       <artifactId>hadoop-yarn-api</artifactId>
       <scope>provided</scope>
     </dependency>
+    <dependency>
+      <groupId>com.flipkart.fdp</groupId>
+      <artifactId>fdp-flipkart-hdfs-guardrails</artifactId>
+      <scope>provided</scope>
+      <version>2.6.0</version>
+    </dependency>
   </dependencies>
 
   <build>
