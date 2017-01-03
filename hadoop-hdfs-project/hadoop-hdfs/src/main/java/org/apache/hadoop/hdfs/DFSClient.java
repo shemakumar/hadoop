@@ -1228,6 +1228,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   @VisibleForTesting
   public LocatedBlocks getLocatedBlocks(String src, long start, long length)
       throws IOException {
+    LOG.info("DFSClient getLocatedBlocks for " + src);
     dfsClientGuardrails.canReadFromLocation(src);
     return callGetBlockLocations(namenode, src, start, length);
   }
@@ -1515,6 +1516,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   public DFSInputStream open(String src, int buffersize, boolean verifyChecksum)
       throws IOException, UnresolvedLinkException {
+    LOG.info("DFSClient open for " + src);
     dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     //    Get block info from namenode
@@ -1970,6 +1972,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   /** Implemented using getFileInfo(src)
    */
   public boolean exists(String src) throws IOException {
+    LOG.info("DFSClient check exists for " + src);
     dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     return getFileInfo(src) != null;
@@ -1996,6 +1999,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public DirectoryListing listPaths(String src,  byte[] startAfter,
       boolean needLocation) 
     throws IOException {
+    LOG.info("DFSClient listPaths for " + src);
     dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
@@ -2016,6 +2020,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#getFileInfo(String) for description of exceptions
    */
   public HdfsFileStatus getFileInfo(String src) throws IOException {
+    LOG.info("DFSClient getFileInfo for " + src);
     dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
@@ -2051,6 +2056,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#getFileLinkInfo(String)
    */
   public HdfsFileStatus getFileLinkInfo(String src) throws IOException {
+    LOG.info("DFSClient getFileLinkInfo for " + src);
     dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
@@ -2817,6 +2823,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   ContentSummary getContentSummary(String src) throws IOException {
     try {
+      LOG.info("DFSClient getContentSummary for " + src);
       dfsClientGuardrails.canReadFromLocation(src);
       return namenode.getContentSummary(src);
     } catch(RemoteException re) {
@@ -3117,6 +3124,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   }
 
   public void checkAccess(String src, FsAction mode) throws IOException {
+    LOG.info("DFSClient checkAccess for " + src);
     dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
