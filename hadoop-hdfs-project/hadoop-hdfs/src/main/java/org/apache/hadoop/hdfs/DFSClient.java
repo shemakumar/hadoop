@@ -2021,7 +2021,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   public HdfsFileStatus getFileInfo(String src) throws IOException {
     LOG.info("DFSClient getFileInfo for " + src);
-    dfsClientGuardrails.canReadFromLocation(src);
+//    dfsClientGuardrails.canReadFromLocation(src); disabling check as it is used be framework for copying cached jar.
     checkOpen();
     try {
       return namenode.getFileInfo(src);
