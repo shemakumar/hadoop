@@ -1,4 +1,5 @@
 #!/bin/bash
+# Gamma Stage Machine 10.32.65.3
 mvn install -Pdist -Dtar -DskipTests -Dmaven.javadoc.skip=true
 ssh $1  sudo  rm -rf  /tmp/fdp-hadoop
 ssh $1  sudo  mkdir -p  /tmp/fdp-hadoop
