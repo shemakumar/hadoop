@@ -43,7 +43,7 @@ public class DFSClientGuardRailsImpl implements DFSClientGuardrails, Runnable {
   public DFSClientGuardRailsImpl(Configuration conf) throws IOException {
     // DFSClient instance is created by processes such as JobHistoryUtils, and those don't use Driver's JobConfig
     if (conf.get(DFSClientGuardrails.BADGER_PROCESSID_CONF) == null) {
-      ignoreGuardrails = true;
+      ignoreGuardrails = false; // making sure that ignore guardrails is always false as of now.
       return;
     } else {
       ignoreGuardrails = false;
