@@ -897,6 +897,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   boolean renewLease() throws IOException {
     if (clientRunning && !isFilesBeingWrittenEmpty()) {
       try {
+        LOG.info("Namenode call to renew lease");
         namenode.renewLease(clientName);
         updateLastLeaseRenewal();
         return true;
@@ -1011,6 +1012,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   public long getBlockSize(String f) throws IOException {
     try {
+      LOG.info("Namenode call to getBlockSize"+f);
       return namenode.getPreferredBlockSize(f);
     } catch (IOException ie) {
       LOG.warn("Problem getting block size", ie);
@@ -1025,6 +1027,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public FsServerDefaults getServerDefaults() throws IOException {
     long now = Time.now();
     if (now - serverDefaultsLastUpdate > SERVER_DEFAULTS_VALIDITY_PERIOD) {
+      LOG.info("Namenode call to get default values for a number of configuration params.");
       serverDefaults = namenode.getServerDefaults();
       serverDefaultsLastUpdate = now;
     }
@@ -1046,6 +1049,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   public Token<DelegationTokenIdentifier> getDelegationToken(Text renewer)
       throws IOException {
+    LOG.info("Namenode call to getDelegationToken");
     assert dtService != null;
     Token<DelegationTokenIdentifier> token =
       namenode.getDelegationToken(renewer);
@@ -1209,6 +1213,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#reportBadBlocks(LocatedBlock[])
    */
   public void reportBadBlocks(LocatedBlock[] blocks) throws IOException {
+    LOG.info("Namenode call to report bad blocks");
     namenode.reportBadBlocks(blocks);
   }
   
@@ -1228,7 +1233,8 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   @VisibleForTesting
   public LocatedBlocks getLocatedBlocks(String src, long start, long length)
       throws IOException {
-    dfsClientGuardrails.canReadFromLocation(src);
+    LOG.info("Namenode call to getLocatedBlocks"+src+"Start"+start+"Length"+length);
+    dfsClientGuardrails.canReadFromLocation(src);//this is only for testing. we can avoid this line here
     return callGetBlockLocations(namenode, src, start, length);
   }
 
@@ -1239,6 +1245,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       String src, long start, long length) 
       throws IOException {
     try {
+      LOG.info("Namenode call to get block locations for a file"+src+"Start"+start+"Length"+length);
       return namenode.getBlockLocations(src, start, length);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -1257,6 +1264,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     checkOpen();
 
     try {
+      LOG.info("Namenode call to recover lease"+src);
       return namenode.recoverLease(src, clientName);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException(FileNotFoundException.class,
@@ -1753,6 +1761,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public void createSymlink(String target, String link, boolean createParent)
       throws IOException {
     try {
+      LOG.info("Namenode call to create symlink"+target);
       FsPermission dirPerm = 
           FsPermission.getDefault().applyUMask(dfsClientConf.uMask); 
       namenode.createSymlink(target, link, dirPerm, createParent);
@@ -1776,6 +1785,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public String getLinkTarget(String path) throws IOException { 
     checkOpen();
     try {
+      LOG.info("Namenode call to getLinkTarget");
       return namenode.getLinkTarget(path);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -1788,6 +1798,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       int buffersize, Progressable progress) throws IOException {
     LocatedBlock lastBlock = null;
     try {
+      LOG.info("Namenode call to append to a file"+src);
       lastBlock = namenode.append(src, clientName);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -1840,6 +1851,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public boolean setReplication(String src, short replication)
       throws IOException {
     try {
+      LOG.info("Namenode call to set replication"+src);
       return namenode.setReplication(src, replication);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -1859,6 +1871,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public void setStoragePolicy(String src, String policyName)
       throws IOException {
     try {
+      LOG.info("Namenode call to set storage policy"+src);
       namenode.setStoragePolicy(src, policyName);
     } catch (RemoteException e) {
       throw e.unwrapRemoteException(AccessControlException.class,
@@ -1874,6 +1887,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @return All the existing storage policies
    */
   public BlockStoragePolicy[] getStoragePolicies() throws IOException {
+    LOG.info("Namenode call to get Storage Policy");
     return namenode.getStoragePolicies();
   }
 
@@ -1886,6 +1900,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public boolean rename(String src, String dst) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to rename file / directory"+src);
       return namenode.rename(src, dst);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -1907,6 +1922,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     }
     checkOpen();
     try {
+      LOG.info("Namenode call to concat"+trg);
       namenode.concat(trg, srcs);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -1922,6 +1938,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to rename file or dir"+src);
       namenode.rename2(src, dst, options);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -1943,6 +1960,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public boolean delete(String src) throws IOException {
     dfsClientGuardrails.canWriteToLocation(src);
     checkOpen();
+    LOG.info("Namenode call to delete file or dir"+src);
     return namenode.delete(src, true);
   }
 
@@ -1957,6 +1975,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     dfsClientGuardrails.canWriteToLocation(src);
     checkOpen();
     try {
+      LOG.info("Namenode call to delete file / dir recursive"+src);
       return namenode.delete(src, recursive);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -1999,6 +2018,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
+      LOG.info("Namenode call to list paths" + src);
       return namenode.getListing(src, startAfter, needLocation);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2019,6 +2039,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
 //    dfsClientGuardrails.canReadFromLocation(src); to avoid providing / in input.dirs conf
     checkOpen();
     try {
+      LOG.info("Namenode call to getFileInfo"+src);
       return namenode.getFileInfo(src);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2034,6 +2055,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public boolean isFileClosed(String src) throws IOException{
     checkOpen();
     try {
+      LOG.info("Namenode call to check if file closed" + src);
       return namenode.isFileClosed(src);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2054,6 +2076,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
+      LOG.info("Namenode call to getFileLinkINfo" + src);
       return namenode.getFileLinkInfo(src);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2378,6 +2401,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to set owner" + src + username + groupname);
       namenode.setOwner(src, username, groupname);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2392,6 +2416,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#getStats()
    */
   public FsStatus getDiskStatus() throws IOException {
+    LOG.info("Namenode call to getDiskStatus");
     long rawNums[] = namenode.getStats();
     return new FsStatus(rawNums[0], rawNums[1], rawNums[2]);
   }
@@ -2402,6 +2427,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @throws IOException
    */ 
   public long getMissingBlocksCount() throws IOException {
+    LOG.info("Namenode call to getMissingBlockCount");
     return namenode.getStats()[ClientProtocol.GET_STATS_MISSING_BLOCKS_IDX];
   }
   
@@ -2410,6 +2436,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @throws IOException
    */ 
   public long getUnderReplicatedBlocksCount() throws IOException {
+    LOG.info("Namenode call to getUnderreplicatedBlockCounts");
     return namenode.getStats()[ClientProtocol.GET_STATS_UNDER_REPLICATED_IDX];
   }
   
@@ -2418,6 +2445,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @throws IOException
    */ 
   public long getCorruptBlocksCount() throws IOException {
+    LOG.info("Namenode call to getCorruptBlockCounts");
     return namenode.getStats()[ClientProtocol.GET_STATS_CORRUPT_BLOCKS_IDX];
   }
   
@@ -2428,16 +2456,19 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public CorruptFileBlocks listCorruptFileBlocks(String path,
                                                  String cookie)
     throws IOException {
+    LOG.info("Namenode call to list corrupt file blocks");
     return namenode.listCorruptFileBlocks(path, cookie);
   }
 
   public DatanodeInfo[] datanodeReport(DatanodeReportType type)
   throws IOException {
+    LOG.info("Namenode call to getDataNOdeReport");
     return namenode.getDatanodeReport(type);
   }
     
   public DatanodeStorageReport[] getDatanodeStorageReport(
       DatanodeReportType type) throws IOException {
+    LOG.info("Namenode call to getDataNodeStorageReport");
     return namenode.getDatanodeStorageReport(type);
   }
 
@@ -2462,6 +2493,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#setSafeMode(HdfsConstants.SafeModeAction, boolean)
    */
   public boolean setSafeMode(SafeModeAction action, boolean isChecked) throws IOException{
+    LOG.info("Namenode call to setSafeMode");
     return namenode.setSafeMode(action, isChecked);    
   }
  
@@ -2476,6 +2508,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public String createSnapshot(String snapshotRoot, String snapshotName)
       throws IOException {
     checkOpen();
+    LOG.info("Namenode call to create Snapshot");
     try {
       return namenode.createSnapshot(snapshotRoot, snapshotName);
     } catch(RemoteException re) {
@@ -2495,6 +2528,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public void deleteSnapshot(String snapshotRoot, String snapshotName)
       throws IOException {
     dfsClientGuardrails.canWriteToLocation(snapshotRoot);
+    LOG.info("Namenode call to deleteSnapshot"+snapshotRoot+snapshotName);
     try {
       namenode.deleteSnapshot(snapshotRoot, snapshotName);
     } catch(RemoteException re) {
@@ -2516,6 +2550,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     dfsClientGuardrails.canWriteToLocation(snapshotOldName);
     checkOpen();
     try {
+      LOG.info("Namenode call to rename snapshot" + snapshotNewName);
       namenode.renameSnapshot(snapshotDir, snapshotOldName, snapshotNewName);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException();
@@ -2532,6 +2567,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to getSnapshotDirListing");
       return namenode.getSnapshottableDirListing();
     } catch(RemoteException re) {
       throw re.unwrapRemoteException();
@@ -2547,6 +2583,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     dfsClientGuardrails.canWriteToLocation(snapshotRoot);
     checkOpen();
     try {
+      LOG.info("Namenode call to allowSnapshot");
       namenode.allowSnapshot(snapshotRoot);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException();
@@ -2562,6 +2599,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     dfsClientGuardrails.canWriteToLocation(snapshotRoot);
     checkOpen();
     try {
+      LOG.info("Namenode call to disallowSnapshot");
       namenode.disallowSnapshot(snapshotRoot);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException();
@@ -2579,6 +2617,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     dfsClientGuardrails.canWriteToLocation(fromSnapshot);
     checkOpen();
     try {
+      LOG.info("Namenode call to getSnapshotDirReport");
       return namenode.getSnapshotDiffReport(snapshotDir,
           fromSnapshot, toSnapshot);
     } catch(RemoteException re) {
@@ -2590,6 +2629,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       CacheDirectiveInfo info, EnumSet<CacheFlag> flags) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to add Cache Directive");
       return namenode.addCacheDirective(info, flags);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException();
@@ -2600,6 +2640,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       CacheDirectiveInfo info, EnumSet<CacheFlag> flags) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to modifyCacheDirective");
       namenode.modifyCacheDirective(info, flags);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException();
@@ -2610,6 +2651,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to removeCacheDirective");
       namenode.removeCacheDirective(id);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException();
@@ -2624,6 +2666,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public void addCachePool(CachePoolInfo info) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to add Cache pool");
       namenode.addCachePool(info);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException();
@@ -2633,6 +2676,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public void modifyCachePool(CachePoolInfo info) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to modify cache pool");
       namenode.modifyCachePool(info);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException();
@@ -2642,6 +2686,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public void removeCachePool(String poolName) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to remove cache pool");
       namenode.removeCachePool(poolName);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException();
@@ -2659,6 +2704,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   void saveNamespace() throws AccessControlException, IOException {
     try {
+      LOG.info("Namenode call to saveNamespace");
       namenode.saveNamespace();
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class);
@@ -2673,6 +2719,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   long rollEdits() throws AccessControlException, IOException {
     try {
+      LOG.info("Namenode call to roll edits");
       return namenode.rollEdits();
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class);
@@ -2691,6 +2738,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   boolean restoreFailedStorage(String arg)
       throws AccessControlException, IOException{
+    LOG.info("Namenode call to restore failed storage");
     return namenode.restoreFailedStorage(arg);
   }
 
@@ -2702,6 +2750,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#refreshNodes()
    */
   public void refreshNodes() throws IOException {
+    LOG.info("Namenode call to refresh nodes");
     namenode.refreshNodes();
   }
 
@@ -2712,6 +2761,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   public void metaSave(String pathname) throws IOException {
     dfsClientGuardrails.canWriteToLocation(pathname);
+    LOG.info("Namenode call to dump meta data");
     namenode.metaSave(pathname);
   }
 
@@ -2724,6 +2774,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#setBalancerBandwidth(long)
    */
   public void setBalancerBandwidth(long bandwidth) throws IOException {
+    LOG.info("Namenode call to set balancer width");
     namenode.setBalancerBandwidth(bandwidth);
   }
     
@@ -2731,10 +2782,12 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    * @see ClientProtocol#finalizeUpgrade()
    */
   public void finalizeUpgrade() throws IOException {
+    LOG.info("Namenode call to finalize upgrade");
     namenode.finalizeUpgrade();
   }
 
   RollingUpgradeInfo rollingUpgrade(RollingUpgradeAction action) throws IOException {
+    LOG.info("Namenode call to rolling upgrade");
     return namenode.rollingUpgrade(action);
   }
 
@@ -2818,6 +2871,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   ContentSummary getContentSummary(String src) throws IOException {
     try {
       dfsClientGuardrails.canReadFromLocation(src);
+      LOG.info("Namenode call to getContentSummary");
       return namenode.getContentSummary(src);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2844,6 +2898,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
                                          
     }
     try {
+      LOG.info("Namenode call to setQuota"+src);
       namenode.setQuota(src, namespaceQuota, diskspaceQuota);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2864,6 +2919,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     dfsClientGuardrails.canWriteToLocation(src);
     checkOpen();
     try {
+      LOG.info("Namenode call to set times"+src);
       namenode.setTimes(src, mtime, atime);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2922,6 +2978,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to modifyAclEntries");
       namenode.modifyAclEntries(src, aclSpec);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2938,6 +2995,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to removeAclEntries");
       namenode.removeAclEntries(src, aclSpec);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2953,6 +3011,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public void removeDefaultAcl(String src) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to removeDefaultAcl"+src);
       namenode.removeDefaultAcl(src);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2968,6 +3027,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public void removeAcl(String src) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to removeAcl"+src);
       namenode.removeAcl(src);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2983,6 +3043,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public void setAcl(String src, List<AclEntry> aclSpec) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to setAcl");
       namenode.setAcl(src, aclSpec);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2998,6 +3059,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public AclStatus getAclStatus(String src) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to getAclStatus");
       return namenode.getAclStatus(src);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -3011,6 +3073,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to create Encryption zone");
       namenode.createEncryptionZone(src, keyName);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -3023,6 +3086,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
           throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to getEZForPath");
       return namenode.getEZForPath(src);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -3040,6 +3104,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       EnumSet<XAttrSetFlag> flag) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to setXAttrs");
       namenode.setXAttr(src, XAttrHelper.buildXAttr(name, value), flag);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -3054,6 +3119,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public byte[] getXAttr(String src, String name) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to getXAttrs");
       final List<XAttr> xAttrs = XAttrHelper.buildXAttrAsList(name);
       final List<XAttr> result = namenode.getXAttrs(src, xAttrs);
       return XAttrHelper.getFirstXAttrValue(result);
@@ -3067,6 +3133,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public Map<String, byte[]> getXAttrs(String src) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to getXAttrs");
       return XAttrHelper.buildXAttrMap(namenode.getXAttrs(src, null));
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -3079,6 +3146,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
       throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to getXAttrs"+src);
       return XAttrHelper.buildXAttrMap(namenode.getXAttrs(
           src, XAttrHelper.buildXAttrs(names)));
     } catch(RemoteException re) {
@@ -3105,6 +3173,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   public void removeXAttr(String src, String name) throws IOException {
     checkOpen();
     try {
+      LOG.info("Namenode call to remoce X ATTR"+src);
       namenode.removeXAttr(src, XAttrHelper.buildXAttr(name));
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -3120,6 +3189,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     dfsClientGuardrails.canReadFromLocation(src);
     checkOpen();
     try {
+      LOG.info("Namenode call to check access"+src);
       namenode.checkAccess(src, mode);
     } catch (RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
