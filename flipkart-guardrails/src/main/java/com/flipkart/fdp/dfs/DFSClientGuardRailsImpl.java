@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by pranav.agarwal on 05/12/16.
@@ -30,6 +31,7 @@ public class DFSClientGuardRailsImpl implements DFSClientGuardrails, Runnable {
   private static final String MR_APP_FRAMEWORK_PATH = "mapreduce.application.framework.path";
   private static final String YARN_APP_STAGING_DIR = "yarn.app.mapreduce.am.staging-dir";
   private static final String STAGING_DIR_SUFFIX = "/.staging";
+  private int namenodeCallCountThreshHold;
 
   private long writeThreshHold;
   private long readThreshold;
@@ -39,6 +41,7 @@ public class DFSClientGuardRailsImpl implements DFSClientGuardrails, Runnable {
   private boolean raiseException = false;
   private Configuration conf;
   private boolean ignoreGuardrails;
+  private static AtomicInteger namenodeCallCounter = new AtomicInteger(0);
 
   public DFSClientGuardRailsImpl(Configuration conf) throws IOException {
     // DFSClient instance is created by processes such as JobHistoryUtils, and those don't use Driver's JobConfig
@@ -76,6 +79,12 @@ public class DFSClientGuardRailsImpl implements DFSClientGuardrails, Runnable {
     if (conf.get(MR_APP_FRAMEWORK_PATH) != null) {
       whiteList.add(conf.get(MR_APP_FRAMEWORK_PATH));
     }
+
+    namenodeCallCountThreshHold = conf.getInt(Constants.NAMENODE_CALL_COUNT_THRESHOLD, -1);
+    if (namenodeCallCountThreshHold == -1) {
+      throw new RuntimeException(String.format("%s property not set", Constants.NAMENODE_CALL_COUNT_THRESHOLD));
+    }
+    
     String appStagingDIR = conf.get(YARN_APP_STAGING_DIR);
     UserGroupInformation user = UserGroupInformation.getCurrentUser();
 
@@ -87,13 +96,11 @@ public class DFSClientGuardRailsImpl implements DFSClientGuardrails, Runnable {
       whiteList.add(stagingDir);
       LOGGER.info(String.format("Adding staging dir to whitelist %s", stagingDir));
     }
-
-
-
 //    ses = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryBuilder().setNameFormat("DFSClientGuradrailImpl ").build());
 //    ses.scheduleAtFixedRate(this, 60L, 300L, TimeUnit.SECONDS);
 
   }
+
   @Override public void run() {
     FileSystem fs = null;
     try {
@@ -149,6 +156,17 @@ public class DFSClientGuardRailsImpl implements DFSClientGuardrails, Runnable {
   public void canWriteToLocation(String location) throws IOException {
     if (!locationAccessible(location, outputDirs)) {
       throw new IOException("Not authorized to write to " + location);
+    }
+  }
+
+  @Override
+  public void canCallNamenodeFurther() throws IOException
+  {
+    final int counter = namenodeCallCounter.incrementAndGet();
+    LOGGER.debug(String.format("canCallNamenodeFurther validation call for counter value  %s", counter));
+    if(counter > namenodeCallCountThreshHold) {
+      throw new IOException(String.format("Namenode call counter value reached threshold: %s",
+              counter));
     }
   }
 

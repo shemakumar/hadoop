@@ -2019,6 +2019,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     checkOpen();
     try {
       LOG.info("Namenode call to list paths" + src);
+      dfsClientGuardrails.canCallNamenodeFurther();
       return namenode.getListing(src, startAfter, needLocation);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
@@ -2040,6 +2041,7 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     checkOpen();
     try {
       LOG.info("Namenode call to getFileInfo"+src);
+      dfsClientGuardrails.canCallNamenodeFurther();
       return namenode.getFileInfo(src);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,

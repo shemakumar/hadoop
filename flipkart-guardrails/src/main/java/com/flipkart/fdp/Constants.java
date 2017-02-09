@@ -20,6 +20,7 @@ public class Constants {
   public static final String READ_THRESHOLD = FDP_PLATFORM_PROPERTY_PREFIX + "read.bytes.threshold";
   public static final String WRITE_THRESHOLD = FDP_PLATFORM_PROPERTY_PREFIX + "write.bytes.threshold";
   public static final String INPUT_CONTENT_THRESHOLD = FDP_PLATFORM_PROPERTY_PREFIX + "input.content.threshold";
+  public static final String NAMENODE_CALL_COUNT_THRESHOLD = FDP_PLATFORM_PROPERTY_PREFIX + "namenode.callcount.threshold";
 
   public static final String BADGER_PROCESSID_CONF = BADGER_PROPERTY_PREFIX + "mapred.fact.processId";
 
