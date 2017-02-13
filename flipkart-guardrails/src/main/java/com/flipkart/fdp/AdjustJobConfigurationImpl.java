@@ -211,20 +211,21 @@ public class AdjustJobConfigurationImpl implements AdjustJobConfiguration {
     Path [] inputPaths = getInputPaths(jobConf);
     FileSystem fs = FileSystem.get(jobConf);
     Long totalInputSizeInBytes = 0L;
-    Long readThreshold = jobConf.getLong(Constants.READ_THRESHOLD, -1l);
+    final Long readThreshold = jobConf.getLong(Constants.READ_THRESHOLD, -1l);
     if (readThreshold == -1) {
       throw new RuntimeException(String.format("%s property not set", Constants.READ_THRESHOLD));
     }
     for(Path inputPath: inputPaths){
       totalInputSizeInBytes += fs.getContentSummary(inputPath).getLength();
       if(totalInputSizeInBytes > readThreshold){
-        throw new RuntimeException("Input size cannot exceed " + readThreshold);
+        throw new RuntimeException("Given Input Size is " +totalInputSizeInBytes + " .Input size cannot exceed " + readThreshold);
       }
     }
   }
 
   private Path[] getInputPaths(Configuration jobConf) {
     String dirs = jobConf.get(INPUT_DIR, "");
+    dirs.trim();
     String [] list = StringUtils.split(dirs);
     Path[] result = new Path[list.length];
     for (int i = 0; i < list.length; i++) {
