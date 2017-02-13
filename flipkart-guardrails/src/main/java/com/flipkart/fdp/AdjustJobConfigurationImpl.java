@@ -218,7 +218,8 @@ public class AdjustJobConfigurationImpl implements AdjustJobConfiguration {
     for(Path inputPath: inputPaths){
       totalInputSizeInBytes += fs.getContentSummary(inputPath).getLength();
       if(totalInputSizeInBytes > readThreshold){
-        throw new RuntimeException("Given Input Size is " +totalInputSizeInBytes + " .Input size cannot exceed " + readThreshold);
+        throw new RuntimeException("Given Input Size already reached " +totalInputSizeInBytes + " at input path " + inputPath +
+                " .Input size cannot exceed " + readThreshold);
       }
     }
   }
