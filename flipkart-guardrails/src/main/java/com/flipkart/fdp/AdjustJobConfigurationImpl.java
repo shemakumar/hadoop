@@ -10,12 +10,16 @@ import com.flipkart.fdp.bagder.http.BadgerHttpClient;
 import com.flipkart.fdp.bagder.http.ExponentialBackoffRetryPolicy;
 import com.flipkart.fdp.bagder.response.BadgerMrJobConfiguration;
 import com.flipkart.fdp.bagder.response.BadgerProcessDataResponse;
-import com.flipkart.fdp.util.JobConfigParser;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapreduce.AdjustJobConfiguration;
 import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.util.StringUtils;
+
+import static org.apache.hadoop.mapreduce.lib.input.FileInputFormat.INPUT_DIR;
 
 /**
  * Created by pranav.agarwal on 29/11/16.
@@ -125,6 +129,11 @@ public class AdjustJobConfigurationImpl implements AdjustJobConfiguration {
     }
 
     ensureAllPropertiesAreAvailable(processDataProperties);
+    try{
+      checkInputFilesSize(jobConf);
+    }catch (IOException io){
+      new RuntimeException("IO exception occured while checking input paths");
+    }
 
     Map<String, String> unknownProperties = new LinkedHashMap<String, String>();
     Map<String, String> mismatchProperties = new LinkedHashMap<String, String>();
@@ -196,5 +205,33 @@ public class AdjustJobConfigurationImpl implements AdjustJobConfiguration {
         jobConf.set(property.getKey(), property.getValue(), "Badger processData property");
     }
     jobConf.set(Constants.PASS_THROUGH, "false");
+  }
+
+  private void checkInputFilesSize(Configuration jobConf) throws IOException {
+    Path [] inputPaths = getInputPaths(jobConf);
+    FileSystem fs = FileSystem.get(jobConf);
+    Long totalInputSizeInBytes = 0L;
+    final Long readThreshold = jobConf.getLong(Constants.READ_THRESHOLD, -1l);
+    if (readThreshold == -1) {
+      throw new RuntimeException(String.format("%s property not set", Constants.READ_THRESHOLD));
+    }
+    for(Path inputPath: inputPaths){
+      totalInputSizeInBytes += fs.getContentSummary(inputPath).getLength();
+      if(totalInputSizeInBytes > readThreshold){
+        throw new RuntimeException("Given Input Size already reached " +totalInputSizeInBytes + " at input path " + inputPath +
+                " .Input size cannot exceed " + readThreshold);
+      }
+    }
+  }
+
+  private Path[] getInputPaths(Configuration jobConf) {
+    String dirs = jobConf.get(INPUT_DIR, "");
+    dirs.trim();
+    String [] list = StringUtils.split(dirs);
+    Path[] result = new Path[list.length];
+    for (int i = 0; i < list.length; i++) {
+      result[i] = new Path(StringUtils.unEscapeString(list[i]));
+    }
+    return result;
   }
 }
