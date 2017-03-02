@@ -215,6 +215,7 @@ public class AdjustJobConfigurationImpl implements AdjustJobConfiguration {
     if (readThreshold == -1) {
       throw new RuntimeException(String.format("%s property not set", Constants.READ_THRESHOLD));
     }
+    LOGGER.info("read side threshold is " + readThreshold);
     for(Path inputPath: inputPaths){
       totalInputSizeInBytes += fs.getContentSummary(inputPath).getLength();
       if(totalInputSizeInBytes > readThreshold){
@@ -222,6 +223,7 @@ public class AdjustJobConfigurationImpl implements AdjustJobConfiguration {
                 " .Input size cannot exceed " + readThreshold);
       }
     }
+    LOGGER.info("Total input size in bytes is " + totalInputSizeInBytes);
   }
 
   private Path[] getInputPaths(Configuration jobConf) {
