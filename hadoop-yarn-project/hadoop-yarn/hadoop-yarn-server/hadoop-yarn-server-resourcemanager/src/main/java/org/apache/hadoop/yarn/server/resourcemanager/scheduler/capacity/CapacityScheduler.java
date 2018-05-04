@@ -57,6 +57,7 @@ import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.QueueACL;
 import org.apache.hadoop.yarn.api.records.QueueInfo;
+import org.apache.hadoop.yarn.api.records.QueueState;
 import org.apache.hadoop.yarn.api.records.QueueUserACLInfo;
 import org.apache.hadoop.yarn.api.records.ReservationId;
 import org.apache.hadoop.yarn.api.records.Resource;
@@ -718,6 +719,11 @@ public class CapacityScheduler extends
       } catch (AccessControlException ace) {
         // Ignore the exception for recovered app as the app was previously
         // accepted.
+        // If queue state is STOPPED, it should be updated to DRAINING
+        if (queue instanceof LeafQueue
+            && queue.getState() == QueueState.STOPPED) {
+          ((LeafQueue) queue).recoverDrainingState();
+        }
       }
       queue.getMetrics().submitApp(user);
       SchedulerApplication<FiCaSchedulerApp> application =

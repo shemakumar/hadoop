@@ -32,7 +32,13 @@ import org.apache.hadoop.yarn.api.records.QueueState;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.nodelabels.CommonNodeLabelsManager;
+import org.apache.hadoop.yarn.server.resourcemanager.MockNM;
+import org.apache.hadoop.yarn.server.resourcemanager.MockRM;
 import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
+import org.apache.hadoop.yarn.server.resourcemanager.recovery.MemoryRMStateStore;
+import org.apache.hadoop.yarn.server.resourcemanager.recovery.RMStateStore;
+import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
+import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppState;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerApp;
 import org.apache.hadoop.yarn.util.resource.Resources;
 import org.junit.Assert;
@@ -196,5 +202,56 @@ public class TestQueueState {
     when(application.compareInputOrderTo(any(FiCaSchedulerApp.class)))
         .thenCallRealMethod();
     return application;
+  }
+
+
+  @Test (timeout = 30000)
+  public void testRecoverDrainingStateAfterRMRestart() throws Exception {
+    // init conf
+    CapacitySchedulerConfiguration conf = new CapacitySchedulerConfiguration();
+    conf.setBoolean(YarnConfiguration.RECOVERY_ENABLED, true);
+    conf.setBoolean(YarnConfiguration.RM_WORK_PRESERVING_RECOVERY_ENABLED,
+        false);
+    conf.set(YarnConfiguration.RM_STORE, MemoryRMStateStore.class.getName());
+    conf.setInt(YarnConfiguration.RM_MAX_COMPLETED_APPLICATIONS, 1);
+    conf.setQueues(CapacitySchedulerConfiguration.ROOT, new String[] {Q1});
+    conf.setQueues(Q1_PATH, new String[] {Q2});
+    conf.setCapacity(Q1_PATH, 100);
+    conf.setCapacity(Q2_PATH, 100);
+
+    // init state store
+    MemoryRMStateStore memStore = new MemoryRMStateStore();
+    memStore.init(conf);
+    RMStateStore.RMState rmState = memStore.getState();
+    // init RM & NMs & Nodes
+    MockRM rm = new MockRM(conf, memStore);
+    rm.start();
+    MockNM nm = rm.registerNode("h1:1234", 204800);
+
+    // submit an app, AM is running on nm1
+    RMApp app = rm.submitApp(1024, "appname", "appuser", null, Q2);
+    MockRM.launchAM(app, rm, nm);
+    rm.waitForState(app.getApplicationId(), RMAppState.ACCEPTED);
+    // update queue state to STOPPED
+    conf.setState(Q1_PATH, QueueState.STOPPED);
+    CapacityScheduler cs = (CapacityScheduler) rm.getRMContext().getScheduler();
+    cs.reinitialize(conf, rm.getRMContext());
+    // current queue state should be DRAINING
+    Assert.assertEquals(QueueState.DRAINING, cs.getQueue(Q2).getState());
+    Assert.assertEquals(QueueState.DRAINING, cs.getQueue(Q1).getState());
+
+    // RM restart
+    rm = new MockRM(conf, memStore);
+    rm.start();
+    rm.registerNode("h1:1234", 204800);
+
+    // queue state should be DRAINING after app recovered
+    rm.waitForState(app.getApplicationId(), RMAppState.ACCEPTED);
+    cs = (CapacityScheduler) rm.getRMContext().getScheduler();
+    Assert.assertEquals(QueueState.DRAINING, cs.getQueue(Q2).getState());
+    Assert.assertEquals(QueueState.DRAINING, cs.getQueue(Q1).getState());
+
+    // close rm
+    rm.close();
   }
 }
