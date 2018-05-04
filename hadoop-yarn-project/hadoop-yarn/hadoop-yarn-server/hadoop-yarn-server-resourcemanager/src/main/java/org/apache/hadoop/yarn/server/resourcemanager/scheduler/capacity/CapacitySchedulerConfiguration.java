@@ -62,6 +62,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class CapacitySchedulerConfiguration extends ReservationSchedulerConfiguration {
 
@@ -319,6 +321,12 @@ public class CapacitySchedulerConfiguration extends ReservationSchedulerConfigur
 
   AppPriorityACLConfigurationParser priorityACLConfig = new AppPriorityACLConfigurationParser();
 
+  private AtomicBoolean queueConfigsCacheLoaded = new AtomicBoolean(false);
+
+  private Map<String, Map<String, String>> queueOrderingPolicyParams = null;
+
+  private Map<String, Set<String>> queueConfiguredNodeLabels = null;
+
   public CapacitySchedulerConfiguration() {
     this(new Configuration());
   }
@@ -334,6 +342,84 @@ public class CapacitySchedulerConfiguration extends ReservationSchedulerConfigur
       addResource(CS_CONFIGURATION_FILE);
     }
   }
+
+  public void refreshQueueConfigsCache() {
+    synchronized (queueConfigsCacheLoaded) {
+      queueConfigsCacheLoaded.set(false);
+    }
+    loadQueueConfigsCache();
+  }
+
+  private void loadQueueConfigsCache() {
+    synchronized (queueConfigsCacheLoaded){
+      if (queueConfigsCacheLoaded.get()){
+        return;
+      }
+      queueOrderingPolicyParams = new ConcurrentHashMap<>();
+      queueConfiguredNodeLabels = new ConcurrentHashMap<>();
+      Iterator<Entry<String, String>> iter = iterator();
+      Entry<String, String> e;
+      while (iter.hasNext()) {
+        e = iter.next();
+        updateQueueConfiguredNodeLables(e.getKey());
+        updateQueueOrderingPolicyConfigs(e.getKey(), e.getValue());
+      }
+      queueConfigsCacheLoaded.set(true);
+      LOG.info("Loaded queue properties cache: configurableNodeLabels("
+          + queueConfiguredNodeLabels + "), orderingPolicyParams("
+          + queueOrderingPolicyParams + ")");
+    }
+  }
+
+  private void updateQueueOrderingPolicyConfigs(String key, String value){
+    if (key.contains(ORDERING_POLICY + DOT)) {
+      // Find <queue-path> and <ordering-policy-configKey> in
+      // yarn.scheduler.capacity.<queue-path>.ordering-policy.
+      // <ordering-policy-configKey>
+      int queuePathStartIdx = PREFIX.length();
+      int queuePathEndIdx = key.indexOf(ORDERING_POLICY) - 1;
+      if(queuePathEndIdx <= queuePathStartIdx){
+        return;
+      }
+      String queuePath = key.substring(queuePathStartIdx, queuePathEndIdx);
+      int orderingPolocyKeyStartIdx =
+          key.indexOf(ORDERING_POLICY) + ORDERING_POLICY.length() + 1;
+      String orderingPolocyKey = key.substring(orderingPolocyKeyStartIdx);
+      Map<String, String> orderingPolocyConfigs =
+          queueOrderingPolicyParams.get(queuePath);
+      if (orderingPolocyConfigs == null) {
+        orderingPolocyConfigs = new HashMap<>();
+        queueOrderingPolicyParams.put(queuePath, orderingPolocyConfigs);
+      }
+      orderingPolocyConfigs.put(orderingPolocyKey, value);
+    }
+  }
+
+  private void updateQueueConfiguredNodeLables(String key){
+    if (key.contains(ACCESSIBLE_NODE_LABELS + DOT)) {
+      // Find <queue-path> and <label-name> in
+      // yarn.scheduler.capacity.<queue-path>.accessible-node-labels.
+      // <label-name>.property
+      int queuePathStartIdx = PREFIX.length();
+      int queuePathEndIdx = key.indexOf(ACCESSIBLE_NODE_LABELS) - 1;
+      if(queuePathEndIdx <= queuePathStartIdx){
+        return;
+      }
+      int labelStartIdx =
+          key.indexOf(ACCESSIBLE_NODE_LABELS) + ACCESSIBLE_NODE_LABELS
+              .length() + 1;
+      int labelEndIndx = key.indexOf('.', labelStartIdx);
+      String queuePath = key.substring(queuePathStartIdx, queuePathEndIdx);
+      String labelName = key.substring(labelStartIdx, labelEndIndx);
+      Set<String> labels = queueConfiguredNodeLabels.get(queuePath);
+      if (labels == null) {
+        labels = new HashSet<>();
+        queueConfiguredNodeLabels.put(queuePath, labels);
+      }
+      labels.add(labelName);
+    }
+  }
+
 
   static String getQueuePrefix(String queue) {
     String queueName = PREFIX + queue + DOT;
@@ -473,15 +559,26 @@ public class CapacitySchedulerConfiguration extends ReservationSchedulerConfigur
       throw new RuntimeException(message, e);
     }
 
-    Map<String, String> config = new HashMap<String, String>();
-    String confPrefix = getQueuePrefix(queue) + ORDERING_POLICY + ".";
-    for (Map.Entry<String, String> kv : this) {
-      if (kv.getKey().startsWith(confPrefix)) {
-         config.put(kv.getKey().substring(confPrefix.length()), kv.getValue());
-      }
-    }
+    Map<String, String> config = getOrderingPolicyConfigs(queue);
     orderingPolicy.configure(config);
     return orderingPolicy;
+  }
+
+  public Map<String, String> getOrderingPolicyConfigs(String queue){
+    Map<String, String> config = new HashMap<String, String>();
+    if (queueConfigsCacheLoaded.get()) {
+      if (queueOrderingPolicyParams.containsKey(queue)) {
+        config = queueOrderingPolicyParams.get(queue);
+      }
+    } else {
+      String confPrefix = getQueuePrefix(queue) + ORDERING_POLICY + ".";
+      for (Map.Entry<String, String> kv : this) {
+        if (kv.getKey().startsWith(confPrefix)) {
+          config.put(kv.getKey().substring(confPrefix.length()), kv.getValue());
+        }
+      }
+    }
+    return config;
   }
 
   public void setUserLimit(String queue, int userLimit) {
@@ -527,6 +624,11 @@ public class CapacitySchedulerConfiguration extends ReservationSchedulerConfigur
     }
     String str = StringUtils.join(",", labels);
     set(getQueuePrefix(queue) + ACCESSIBLE_NODE_LABELS, str);
+    if (queueConfigsCacheLoaded.get()) {
+      synchronized (queueConfigsCacheLoaded) {
+        queueConfiguredNodeLabels.put(queue, labels);
+      }
+    }
   }
   
   public Set<String> getAccessibleNodeLabels(String queue) {
@@ -1121,23 +1223,29 @@ public class CapacitySchedulerConfiguration extends ReservationSchedulerConfigur
    */
   public Set<String> getConfiguredNodeLabels(String queuePath) {
     Set<String> configuredNodeLabels = new HashSet<String>();
-    Entry<String, String> e = null;
-    
-    Iterator<Entry<String, String>> iter = iterator();
-    while (iter.hasNext()) {
-      e = iter.next();
-      String key = e.getKey();
+    if (queueConfigsCacheLoaded.get()) {
+      if (queueConfiguredNodeLabels.containsKey(queuePath)) {
+        configuredNodeLabels = queueConfiguredNodeLabels.get(queuePath);
+      }
+    } else {
+      Entry<String, String> e = null;
 
-      if (key.startsWith(getQueuePrefix(queuePath) + ACCESSIBLE_NODE_LABELS
-          + DOT)) {
-        // Find <label-name> in
-        // <queue-path>.accessible-node-labels.<label-name>.property
-        int labelStartIdx =
-            key.indexOf(ACCESSIBLE_NODE_LABELS)
-                + ACCESSIBLE_NODE_LABELS.length() + 1;
-        int labelEndIndx = key.indexOf('.', labelStartIdx);
-        String labelName = key.substring(labelStartIdx, labelEndIndx);
-        configuredNodeLabels.add(labelName);
+      Iterator<Entry<String, String>> iter = iterator();
+      while (iter.hasNext()) {
+        e = iter.next();
+        String key = e.getKey();
+
+        if (key.startsWith(getQueuePrefix(queuePath) + ACCESSIBLE_NODE_LABELS
+            + DOT)) {
+          // Find <label-name> in
+          // <queue-path>.accessible-node-labels.<label-name>.property
+          int labelStartIdx =
+              key.indexOf(ACCESSIBLE_NODE_LABELS)
+                  + ACCESSIBLE_NODE_LABELS.length() + 1;
+          int labelEndIndx = key.indexOf('.', labelStartIdx);
+          String labelName = key.substring(labelStartIdx, labelEndIndx);
+          configuredNodeLabels.add(labelName);
+        }
       }
     }
     
@@ -1164,6 +1272,17 @@ public class CapacitySchedulerConfiguration extends ReservationSchedulerConfigur
       String parameterKey, String parameterValue) {
     set(getQueuePrefix(queue) + ORDERING_POLICY + "." + parameterKey,
         parameterValue);
+    if (queueConfigsCacheLoaded.get()) {
+      synchronized (queueConfigsCacheLoaded){
+        Map<String, String> orderingPolocyConfigs =
+            queueOrderingPolicyParams.get(queue);
+        if (orderingPolocyConfigs == null) {
+          orderingPolocyConfigs = new HashMap<>();
+          queueOrderingPolicyParams.put(queue, orderingPolocyConfigs);
+        }
+        orderingPolocyConfigs.put(parameterKey, parameterValue);
+      }
+    }
   }
 
   public boolean getLazyPreemptionEnabled() {

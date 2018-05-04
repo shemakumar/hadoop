@@ -637,6 +637,7 @@ public class CapacityScheduler extends
   private void initializeQueues(CapacitySchedulerConfiguration conf)
     throws IOException {
 
+    conf.refreshQueueConfigsCache();
     this.queueManager.initializeQueues(conf);
 
     updatePlacementRules();
@@ -648,6 +649,7 @@ public class CapacityScheduler extends
   @Lock(CapacityScheduler.class)
   private void reinitializeQueues(CapacitySchedulerConfiguration newConf)
   throws IOException {
+    conf.refreshQueueConfigsCache();
     this.queueManager.reinitializeQueues(newConf);
     updatePlacementRules();
 

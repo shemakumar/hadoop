@@ -157,6 +157,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -5062,4 +5063,99 @@ public class TestCapacityScheduler {
     spyCs.handle(new NodeUpdateSchedulerEvent(
         spyCs.getNode(nm.getNodeId()).getRMNode()));
   }
+
+   @Test
+   public void testRefreshQueueConfigsCache() throws IOException {
+     Configuration conf = new YarnConfiguration();
+     conf.set(CapacitySchedulerConfiguration.PREFIX + "queue1"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.ACCESSIBLE_NODE_LABELS
+         + CapacitySchedulerConfiguration.DOT + "label1"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.CAPACITY, "0.2");
+     conf.set(CapacitySchedulerConfiguration.PREFIX + "queue1"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.ACCESSIBLE_NODE_LABELS
+         + CapacitySchedulerConfiguration.DOT + "label2"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.CAPACITY, "0.5");
+     conf.set(CapacitySchedulerConfiguration.PREFIX + "queue2"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.ACCESSIBLE_NODE_LABELS
+         + CapacitySchedulerConfiguration.DOT + "label1"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.CAPACITY, "0.5");
+     conf.set(CapacitySchedulerConfiguration.PREFIX + "queue2"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.ACCESSIBLE_NODE_LABELS
+         + CapacitySchedulerConfiguration.DOT + "label2"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.CAPACITY, "0.2");
+     CapacityScheduler cs = new CapacityScheduler();
+     RMContextImpl rmContext =
+         new RMContextImpl(null, null, null, null, null, null,
+             new RMContainerTokenSecretManager(conf),
+             new NMTokenSecretManagerInRM(conf),
+             new ClientToAMTokenSecretManagerInRM(), null);
+     cs.setConf(new YarnConfiguration());
+     cs.setRMContext(resourceManager.getRMContext());
+     cs.init(conf);
+     cs.start();
+     cs.reinitialize(conf, rmContext);
+     Set<String> queue1Labels =
+         cs.getConfiguration().getConfiguredNodeLabels("queue1");
+     Set<String> queue2Labels =
+         cs.getConfiguration().getConfiguredNodeLabels("queue2");
+     Set<String> queue3Labels =
+         cs.getConfiguration().getConfiguredNodeLabels("queue3");
+     assertTrue(queue1Labels.contains(""));
+     assertTrue(queue1Labels.contains("label1"));
+     assertTrue(queue1Labels.contains("label2"));
+     assertEquals(queue1Labels.size(), 3);
+     assertTrue(queue2Labels.contains(""));
+     assertTrue(queue2Labels.contains("label1"));
+     assertTrue(queue2Labels.contains("label2"));
+     assertEquals(queue2Labels.size(), 3);
+     assertTrue(queue3Labels.contains(""));
+     assertEquals(queue3Labels.size(), 1);
+     conf.set(CapacitySchedulerConfiguration.PREFIX + "queue1"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.ORDERING_POLICY
+         + CapacitySchedulerConfiguration.DOT + "key1", "value1");
+     conf.set(CapacitySchedulerConfiguration.PREFIX + "queue1"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.ORDERING_POLICY
+         + CapacitySchedulerConfiguration.DOT + "key2", "value2");
+     conf.set(CapacitySchedulerConfiguration.PREFIX + "queue2"
+         + CapacitySchedulerConfiguration.DOT
+         + CapacitySchedulerConfiguration.ORDERING_POLICY
+         + CapacitySchedulerConfiguration.DOT + "key1", "value1");
+     cs.reinitialize(conf, rmContext);
+     Map<String, String> queue1OrderingPolicyConfig =
+         cs.getConfiguration().getOrderingPolicyConfigs("queue1");
+     Map<String, String> queue2OrderingPolicyConfig =
+         cs.getConfiguration().getOrderingPolicyConfigs("queue2");
+     Map<String, String> queue3OrderingPolicyConfig =
+         cs.getConfiguration().getOrderingPolicyConfigs("queue3");
+     assertEquals(queue1OrderingPolicyConfig.get("key1"), "value1");
+     assertEquals(queue1OrderingPolicyConfig.get("key2"), "value2");
+     assertEquals(queue1OrderingPolicyConfig.size(), 2);
+     assertEquals(queue2OrderingPolicyConfig.get("key1"), "value1");
+     assertEquals(queue2OrderingPolicyConfig.size(), 1);
+     assertEquals(queue3OrderingPolicyConfig.size(), 0);
+
+     // Test hot update for cache item
+     Set<String> labels = new HashSet<>();
+     labels.add("label3");
+     cs.getConfiguration().setAccessibleNodeLabels("queue3", labels);
+     queue3Labels = cs.getConfiguration().getConfiguredNodeLabels("queue3");
+     assertTrue(queue3Labels.contains(""));
+     assertTrue(queue3Labels.contains("label3"));
+     assertEquals(queue3Labels.size(), 2);
+     cs.getConfiguration().setOrderingPolicyParameter("queue3", "key3", "value3");
+     queue3OrderingPolicyConfig =
+         cs.getConfiguration().getOrderingPolicyConfigs("queue3");
+     assertEquals(queue3OrderingPolicyConfig.size(), 1);
+     assertEquals(queue3OrderingPolicyConfig.get("key3"), "value3");
+   }
 }
