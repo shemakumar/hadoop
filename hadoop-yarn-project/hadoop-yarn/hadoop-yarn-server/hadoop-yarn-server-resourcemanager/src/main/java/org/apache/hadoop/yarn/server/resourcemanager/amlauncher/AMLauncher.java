@@ -105,11 +105,16 @@ public class AMLauncher implements Runnable {
     connect();
     ContainerId masterContainerID = masterContainer.getId();
     ApplicationSubmissionContext applicationContext =
-      application.getSubmissionContext();
+        application.getSubmissionContext();
     LOG.info("Setting up container " + masterContainer
-        + " for AM " + application.getAppAttemptId());  
+        + " for AM " + application.getAppAttemptId());
     ContainerLaunchContext launchContext =
         createAMContainerLaunchContext(applicationContext, masterContainerID);
+
+    if (launchContext == null) {
+      throw new YarnException(application.getAppAttemptId()+
+                " hbas beed killed before launched");
+    }
 
     StartContainerRequest scRequest =
         StartContainerRequest.newInstance(launchContext,
@@ -186,13 +191,15 @@ public class AMLauncher implements Runnable {
       ContainerId containerID) throws IOException {
 
     // Construct the actual Container
-    ContainerLaunchContext container = 
+    ContainerLaunchContext container =
         applicationMasterContext.getAMContainerSpec();
 
-    // Finalize the container
-    setupTokens(container, containerID);
-    // set the flow context optionally for timeline service v.2
-    setFlowContext(container);
+    if (container != null) {
+      // Finalize the container
+      setupTokens(container, containerID);
+      // set the flow context optionally for timeline service v.2
+      setFlowContext(container);
+    }
 
     return container;
   }
