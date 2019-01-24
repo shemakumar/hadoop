@@ -1470,6 +1470,14 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
       if (!nodeContainers.contains(containerId)) {
         String diag = "Container " + containerId
             + " was running but not reported from " + nodeId;
+        for (ContainerStatus remoteContainer : containerStatuses) {
+          if(remoteContainer.getContainerId().equals(containerId)) {
+            //Containter State
+            ContainerState state = remoteContainer.getState();
+            diag += " got status " + state + " execution type " + remoteContainer.getExecutionType();
+            break;
+          }
+        }
         LOG.warn(diag);
         lostContainers.add(SchedulerUtils.createAbnormalContainerStatus(
             containerId, diag));
