@@ -144,6 +144,7 @@
                   <goal>install-node-and-yarn</goal>
                 </goals>
                 <configuration>
+		  <nodeDownloadRoot>http://10.33.146.112/flipkart/nodejs/</nodeDownloadRoot>
                   <nodeVersion>v5.12.0</nodeVersion>
                   <yarnVersion>v0.21.3</yarnVersion>
                 </configuration>
