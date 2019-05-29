@@ -159,7 +159,6 @@
                 <configuration>
                   <arguments>
                   <argument>install</argument>
-                  <argument>--offline</argument>
                   </arguments>
                 </configuration>
               </execution>
