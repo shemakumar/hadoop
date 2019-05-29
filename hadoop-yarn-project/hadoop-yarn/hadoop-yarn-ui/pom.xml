@@ -157,8 +157,7 @@
                   <goal>yarn</goal>
                 </goals>
                 <configuration>
-                  <arguments>install</arguments>
-                  <arguments>-offline</arguments>
+                  <arguments>install -offline</arguments>
                 </configuration>
               </execution>
               <execution>
