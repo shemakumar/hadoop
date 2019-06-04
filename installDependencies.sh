@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/bin/bash
 
 sudo grep -r security.debian.org /etc/apt/
 sudo sed -i '/security.debian.org/s/^/#/'  /etc/apt/sources.list 

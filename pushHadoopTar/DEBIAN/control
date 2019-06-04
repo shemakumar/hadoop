@@ -1,0 +1,8 @@
+Package: fk-hadoop-tar-test-source
+Version: 3.1.1-1.0.0
+Section: flipkart/base-hadoop-infra-builder
+Priority: standard
+Architecture: amd64
+Depends: fk-ops-servicebuilder
+Maintainer: fk-infra-dev fk-infra-dev@flipkart.com
+Description: From Hadoop build tar.gz will be pushed to reposervice

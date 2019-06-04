@@ -1,3 +1,4 @@
+#!/bin/bash
 cd protobuf-2.5.0
 sudo ./configure
 sudo make clean
