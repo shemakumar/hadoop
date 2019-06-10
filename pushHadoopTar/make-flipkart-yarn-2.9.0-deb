@@ -9,8 +9,6 @@ function die()
 
 
 ## Creating Tar Path
-mkdir -p HadoopSourceBinary
-mkdir -p deb/tmp/
 cp -rf HadoopSourceBinary deb/tmp/
 cp -rf  DEBIAN deb/
 
