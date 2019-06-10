@@ -6,4 +6,5 @@ sudo make
 sudo make install
 sudo ldconfig
 protoc --version
-cd -
+cd $cwd
+
