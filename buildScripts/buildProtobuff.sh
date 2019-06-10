@@ -5,4 +5,5 @@ sudo make clean
 sudo make
 sudo make install
 sudo ldconfig
-#protoc --version
+protoc --version
+cd -
