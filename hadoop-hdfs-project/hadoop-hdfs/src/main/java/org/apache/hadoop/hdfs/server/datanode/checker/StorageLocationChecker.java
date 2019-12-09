@@ -23,6 +23,8 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.*;
 import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+
+import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -30,6 +32,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
+import org.apache.hadoop.hdfs.server.datanode.DataNode;
 import org.apache.hadoop.hdfs.server.datanode.StorageLocation;
 import org.apache.hadoop.hdfs.server.datanode.StorageLocation.CheckContext;
 import org.apache.hadoop.util.DiskChecker.DiskErrorException;
@@ -45,6 +48,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -91,7 +95,7 @@ public class StorageLocationChecker {
         TimeUnit.MILLISECONDS);
 
     if (maxAllowedTimeForCheckMs <= 0) {
-      throw new DiskErrorException("Invalid value configured for "
+      throw new HadoopIllegalArgumentException("Invalid value configured for "
           + DFS_DATANODE_DISK_CHECK_TIMEOUT_KEY + " - "
           + maxAllowedTimeForCheckMs + " (should be > 0)");
     }
@@ -104,10 +108,11 @@ public class StorageLocationChecker {
         DFS_DATANODE_FAILED_VOLUMES_TOLERATED_KEY,
         DFS_DATANODE_FAILED_VOLUMES_TOLERATED_DEFAULT);
 
-    if (maxVolumeFailuresTolerated < 0) {
-      throw new DiskErrorException("Invalid value configured for "
+    if (maxVolumeFailuresTolerated < DataNode.MAX_VOLUME_FAILURE_TOLERATED_LIMIT) {
+      throw new HadoopIllegalArgumentException("Invalid value configured for "
           + DFS_DATANODE_FAILED_VOLUMES_TOLERATED_KEY + " - "
-          + maxVolumeFailuresTolerated + " (should be non-negative)");
+          + maxVolumeFailuresTolerated + " "
+          + DataNode.MAX_VOLUME_FAILURES_TOLERATED_MSG);
     }
 
     this.timer = timer;
@@ -118,6 +123,7 @@ public class StorageLocationChecker {
             DFSConfigKeys.DFS_DATANODE_DISK_CHECK_MIN_GAP_KEY,
             DFSConfigKeys.DFS_DATANODE_DISK_CHECK_MIN_GAP_DEFAULT,
             TimeUnit.MILLISECONDS),
+        0,
         Executors.newCachedThreadPool(
             new ThreadFactoryBuilder()
                 .setNameFormat("StorageLocationChecker thread %d")
@@ -126,16 +132,16 @@ public class StorageLocationChecker {
   }
 
   /**
-   * Initiate a check of the supplied storage volumes and return
-   * a list of failed volumes.
+   * Initiate a check on the supplied storage volumes and return
+   * a list of healthy volumes.
    *
    * StorageLocations are returned in the same order as the input
    * for compatibility with existing unit tests.
    *
    * @param conf HDFS configuration.
    * @param dataDirs list of volumes to check.
-   * @return returns a list of failed volumes. Returns the empty list if
-   *         there are no failed volumes.
+   * @return returns a list of healthy volumes. Returns an empty list if
+   *         there are no healthy volumes.
    *
    * @throws InterruptedException if the check was interrupted.
    * @throws IOException if the number of failed volumes exceeds the
@@ -158,12 +164,15 @@ public class StorageLocationChecker {
     // Start parallel disk check operations on all StorageLocations.
     for (StorageLocation location : dataDirs) {
       goodLocations.put(location, true);
-      futures.put(location,
-          delegateChecker.schedule(location, context));
+      Optional<ListenableFuture<VolumeCheckResult>> olf =
+          delegateChecker.schedule(location, context);
+      if (olf.isPresent()) {
+        futures.put(location, olf.get());
+      }
     }
 
     if (maxVolumeFailuresTolerated >= dataDirs.size()) {
-      throw new DiskErrorException("Invalid value configured for "
+      throw new HadoopIllegalArgumentException("Invalid value configured for "
           + DFS_DATANODE_FAILED_VOLUMES_TOLERATED_KEY + " - "
           + maxVolumeFailuresTolerated + ". Value configured is >= "
           + "to the number of configured volumes (" + dataDirs.size() + ").");
@@ -208,15 +217,26 @@ public class StorageLocationChecker {
       }
     }
 
-    if (failedLocations.size() > maxVolumeFailuresTolerated) {
-      throw new IOException(
-          "Too many failed volumes: " + failedLocations.size() +
-          ". The configuration allows for a maximum of " +
-          maxVolumeFailuresTolerated + " failed volumes.");
+    if (maxVolumeFailuresTolerated == DataNode.MAX_VOLUME_FAILURE_TOLERATED_LIMIT) {
+      if (dataDirs.size() == failedLocations.size()) {
+        throw new DiskErrorException("Too many failed volumes - "
+            + "current valid volumes: " + goodLocations.size()
+            + ", volumes configured: " + dataDirs.size()
+            + ", volumes failed: " + failedLocations.size()
+            + ", volume failures tolerated: " + maxVolumeFailuresTolerated);
+      }
+    } else {
+      if (failedLocations.size() > maxVolumeFailuresTolerated) {
+        throw new DiskErrorException("Too many failed volumes - "
+            + "current valid volumes: " + goodLocations.size()
+            + ", volumes configured: " + dataDirs.size()
+            + ", volumes failed: " + failedLocations.size()
+            + ", volume failures tolerated: " + maxVolumeFailuresTolerated);
+      }
     }
 
     if (goodLocations.size() == 0) {
-      throw new IOException("All directories in "
+      throw new DiskErrorException("All directories in "
           + DFS_DATANODE_DATA_DIR_KEY + " are invalid: "
           + failedLocations);
     }

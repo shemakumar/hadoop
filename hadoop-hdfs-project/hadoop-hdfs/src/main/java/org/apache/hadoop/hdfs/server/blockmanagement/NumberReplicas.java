@@ -41,6 +41,8 @@ public class NumberReplicas extends EnumCounters<NumberReplicas.StoredReplicaSta
     // replicas for the same internal block
     LIVE,
     READONLY,
+    // decommissioning replicas. for a striped block ,this value excludes
+    // redundant and live replicas for the same internal block.
     DECOMMISSIONING,
     DECOMMISSIONED,
     // We need live ENTERING_MAINTENANCE nodes to continue
@@ -77,7 +79,7 @@ public class NumberReplicas extends EnumCounters<NumberReplicas.StoredReplicaSta
    * @return decommissioned and decommissioning replicas
    */
   public int decommissionedAndDecommissioning() {
-    return (int) (get(DECOMMISSIONED) + get(DECOMMISSIONING));
+    return decommissioned() + decommissioning();
   }
 
   /**

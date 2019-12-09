@@ -20,10 +20,13 @@ package org.apache.hadoop.hdfs.server.datanode.checker;
 
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+
+import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.server.datanode.StorageLocation;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.*;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.FsVolumeSpi.VolumeCheckContext;
+import org.apache.hadoop.test.GenericTestUtils;
 import org.apache.hadoop.util.DiskChecker.DiskErrorException;
 import org.apache.hadoop.util.FakeTimer;
 import org.junit.Rule;
@@ -35,10 +38,18 @@ import org.junit.runners.Parameterized.Parameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.apache.hadoop.test.LambdaTestUtils.intercept;
+import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_DISK_CHECK_MIN_GAP_KEY;
+import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_DISK_CHECK_TIMEOUT_KEY;
+import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_FAILED_VOLUMES_TOLERATED_KEY;
 import static org.apache.hadoop.hdfs.server.datanode.checker.VolumeCheckResult.*;
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.*;
@@ -101,24 +112,30 @@ public class TestDatasetVolumeChecker {
     /**
      * Request a check and ensure it triggered {@link FsVolumeSpi#check}.
      */
-    checker.checkVolume(volume, new DatasetVolumeChecker.Callback() {
-      @Override
-      public void call(Set<StorageLocation> healthyVolumes,
-                       Set<StorageLocation> failedVolumes) {
-        numCallbackInvocations.incrementAndGet();
-        if (expectedVolumeHealth != null && expectedVolumeHealth != FAILED) {
-          assertThat(healthyVolumes.size(), is(1));
-          assertThat(failedVolumes.size(), is(0));
-        } else {
-          assertThat(healthyVolumes.size(), is(0));
-          assertThat(failedVolumes.size(), is(1));
-        }
-      }
-    });
+    boolean result =
+        checker.checkVolume(volume, new DatasetVolumeChecker.Callback() {
+          @Override
+          public void call(Set<FsVolumeSpi> healthyVolumes,
+                           Set<FsVolumeSpi> failedVolumes) {
+            numCallbackInvocations.incrementAndGet();
+            if (expectedVolumeHealth != null &&
+                expectedVolumeHealth != FAILED) {
+              assertThat(healthyVolumes.size(), is(1));
+              assertThat(failedVolumes.size(), is(0));
+            } else {
+              assertThat(healthyVolumes.size(), is(0));
+              assertThat(failedVolumes.size(), is(1));
+            }
+          }
+        });
+
+    GenericTestUtils.waitFor(() -> numCallbackInvocations.get() > 0, 5, 10000);
 
     // Ensure that the check was invoked at least once.
-    verify(volume, times(1)).check(anyObject());
-    assertThat(numCallbackInvocations.get(), is(1L));
+    verify(volume, times(1)).check(any());
+    if (result) {
+      assertThat(numCallbackInvocations.get(), is(1L));
+    }
   }
 
   /**
@@ -138,7 +155,7 @@ public class TestDatasetVolumeChecker {
         new DatasetVolumeChecker(new HdfsConfiguration(), new FakeTimer());
     checker.setDelegateChecker(new DummyChecker());
 
-    Set<StorageLocation> failedVolumes = checker.checkAllVolumes(dataset);
+    Set<FsVolumeSpi> failedVolumes = checker.checkAllVolumes(dataset);
     LOG.info("Got back {} failed volumes", failedVolumes.size());
 
     if (expectedVolumeHealth == null || expectedVolumeHealth == FAILED) {
@@ -149,52 +166,7 @@ public class TestDatasetVolumeChecker {
 
     // Ensure each volume's check() method was called exactly once.
     for (FsVolumeSpi volume : volumes) {
-      verify(volume, times(1)).check(anyObject());
-    }
-  }
-
-  /**
-   * Unit test for {@link DatasetVolumeChecker#checkAllVolumesAsync}.
-   *
-   * @throws Exception
-   */
-  @Test(timeout=10000)
-  public void testCheckAllVolumesAsync() throws Exception {
-    LOG.info("Executing {}", testName.getMethodName());
-
-    final List<FsVolumeSpi> volumes = makeVolumes(
-        NUM_VOLUMES, expectedVolumeHealth);
-    final FsDatasetSpi<FsVolumeSpi> dataset = makeDataset(volumes);
-    final DatasetVolumeChecker checker =
-        new DatasetVolumeChecker(new HdfsConfiguration(), new FakeTimer());
-    checker.setDelegateChecker(new DummyChecker());
-    final AtomicLong numCallbackInvocations = new AtomicLong(0);
-
-    checker.checkAllVolumesAsync(
-        dataset, new DatasetVolumeChecker.Callback() {
-          @Override
-          public void call(
-              Set<StorageLocation> healthyVolumes,
-              Set<StorageLocation> failedVolumes) {
-            LOG.info("Got back {} failed volumes", failedVolumes.size());
-            if (expectedVolumeHealth == null ||
-                expectedVolumeHealth == FAILED) {
-              assertThat(healthyVolumes.size(), is(0));
-              assertThat(failedVolumes.size(), is(NUM_VOLUMES));
-            } else {
-              assertThat(healthyVolumes.size(), is(NUM_VOLUMES));
-              assertThat(failedVolumes.size(), is(0));
-            }
-            numCallbackInvocations.incrementAndGet();
-          }
-        });
-
-    // The callback should be invoked exactly once.
-    assertThat(numCallbackInvocations.get(), is(1L));
-
-    // Ensure each volume's check() method was called exactly once.
-    for (FsVolumeSpi volume : volumes) {
-      verify(volume, times(1)).check(anyObject());
+      verify(volume, times(1)).check(any());
     }
   }
 
@@ -204,15 +176,17 @@ public class TestDatasetVolumeChecker {
    */
   static class DummyChecker
       implements AsyncChecker<VolumeCheckContext, VolumeCheckResult> {
+
     @Override
-    public ListenableFuture<VolumeCheckResult> schedule(
+    public Optional<ListenableFuture<VolumeCheckResult>> schedule(
         Checkable<VolumeCheckContext, VolumeCheckResult> target,
         VolumeCheckContext context) {
       try {
-        return Futures.immediateFuture(target.check(context));
+        return Optional.of(
+            Futures.immediateFuture(target.check(context)));
       } catch (Exception e) {
         LOG.info("check routine threw exception " + e);
-        return Futures.immediateFailedFuture(e);
+        return Optional.of(Futures.immediateFailedFuture(e));
       }
     }
 
@@ -236,7 +210,7 @@ public class TestDatasetVolumeChecker {
     return dataset;
   }
 
-  private static List<FsVolumeSpi> makeVolumes(
+  static List<FsVolumeSpi> makeVolumes(
       int numVolumes, VolumeCheckResult health) throws Exception {
     final List<FsVolumeSpi> volumes = new ArrayList<>(numVolumes);
     for (int i = 0; i < numVolumes; ++i) {
@@ -249,13 +223,44 @@ public class TestDatasetVolumeChecker {
       when(volume.getStorageLocation()).thenReturn(location);
 
       if (health != null) {
-        when(volume.check(anyObject())).thenReturn(health);
+        when(volume.check(any())).thenReturn(health);
       } else {
         final DiskErrorException de = new DiskErrorException("Fake Exception");
-        when(volume.check(anyObject())).thenThrow(de);
+        when(volume.check(any())).thenThrow(de);
       }
       volumes.add(volume);
     }
     return volumes;
+  }
+
+  @Test
+  public void testInvalidConfigurationValues() throws Exception {
+    HdfsConfiguration conf = new HdfsConfiguration();
+    conf.setInt(DFS_DATANODE_DISK_CHECK_TIMEOUT_KEY, 0);
+    intercept(HadoopIllegalArgumentException.class,
+        "Invalid value configured for dfs.datanode.disk.check.timeout"
+            + " - 0 (should be > 0)",
+        () -> new DatasetVolumeChecker(conf, new FakeTimer()));
+    conf.unset(DFS_DATANODE_DISK_CHECK_TIMEOUT_KEY);
+
+    conf.setInt(DFS_DATANODE_DISK_CHECK_MIN_GAP_KEY, -1);
+    intercept(HadoopIllegalArgumentException.class,
+        "Invalid value configured for dfs.datanode.disk.check.min.gap"
+            + " - -1 (should be >= 0)",
+        () -> new DatasetVolumeChecker(conf, new FakeTimer()));
+    conf.unset(DFS_DATANODE_DISK_CHECK_MIN_GAP_KEY);
+
+    conf.setInt(DFS_DATANODE_DISK_CHECK_TIMEOUT_KEY, -1);
+    intercept(HadoopIllegalArgumentException.class,
+        "Invalid value configured for dfs.datanode.disk.check.timeout"
+            + " - -1 (should be > 0)",
+        () -> new DatasetVolumeChecker(conf, new FakeTimer()));
+    conf.unset(DFS_DATANODE_DISK_CHECK_TIMEOUT_KEY);
+
+    conf.setInt(DFS_DATANODE_FAILED_VOLUMES_TOLERATED_KEY, -2);
+    intercept(HadoopIllegalArgumentException.class,
+        "Invalid value configured for dfs.datanode.failed.volumes.tolerated"
+            + " - -2 should be greater than or equal to -1",
+        () -> new DatasetVolumeChecker(conf, new FakeTimer()));
   }
 }

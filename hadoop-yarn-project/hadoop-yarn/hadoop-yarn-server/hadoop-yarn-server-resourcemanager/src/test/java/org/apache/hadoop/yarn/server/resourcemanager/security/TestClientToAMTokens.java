@@ -50,8 +50,6 @@ import org.apache.hadoop.yarn.api.protocolrecords.StartContainersResponse;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationReport;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.hadoop.yarn.event.Dispatcher;
-import org.apache.hadoop.yarn.event.DrainDispatcher;
 import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.security.client.ClientToAMTokenIdentifier;
 import org.apache.hadoop.yarn.security.client.ClientToAMTokenSecretManager;
@@ -60,6 +58,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.ClientRMService;
 import org.apache.hadoop.yarn.server.resourcemanager.MockAM;
 import org.apache.hadoop.yarn.server.resourcemanager.MockNM;
 import org.apache.hadoop.yarn.server.resourcemanager.MockRM;
+import org.apache.hadoop.yarn.server.resourcemanager.MockRMAppSubmitter;
 import org.apache.hadoop.yarn.server.resourcemanager.MockRMWithCustomAMLauncher;
 import org.apache.hadoop.yarn.server.resourcemanager.ParameterizedSchedulerTestBase;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
@@ -81,12 +80,16 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class TestClientToAMTokens extends ParameterizedSchedulerTestBase {
   private YarnConfiguration conf;
+
+  public TestClientToAMTokens(SchedulerType type) throws IOException {
+    super(type);
+  }
 
   @Before
   public void setup() {
@@ -199,7 +202,6 @@ public class TestClientToAMTokens extends ParameterizedSchedulerTestBase {
     StartContainersResponse mockResponse = mock(StartContainersResponse.class);
     when(containerManager.startContainers((StartContainersRequest) any()))
       .thenReturn(mockResponse);
-    final DrainDispatcher dispatcher = new DrainDispatcher();
 
     MockRM rm = new MockRMWithCustomAMLauncher(conf, containerManager) {
       protected ClientRMService createClientRMService() {
@@ -209,27 +211,21 @@ public class TestClientToAMTokens extends ParameterizedSchedulerTestBase {
       };
 
       @Override
-      protected Dispatcher createDispatcher() {
-        return dispatcher;
-      }
-
-      @Override
       protected void doSecureLogin() throws IOException {
       }
     };
     rm.start();
 
     // Submit an app
-    RMApp app = rm.submitApp(1024);
+    RMApp app = MockRMAppSubmitter.submitWithMemory(1024, rm);
 
     // Set up a node.
     MockNM nm1 = rm.registerNode("localhost:1234", 3072);
     nm1.nodeHeartbeat(true);
-    dispatcher.await();
+    rm.drainEvents();
     
-
     nm1.nodeHeartbeat(true);
-    dispatcher.await();
+    rm.drainEvents();
 
     ApplicationAttemptId appAttempt = app.getCurrentAppAttempt().getAppAttemptId();
     final MockAM mockAM =
@@ -436,7 +432,6 @@ public class TestClientToAMTokens extends ParameterizedSchedulerTestBase {
     StartContainersResponse mockResponse = mock(StartContainersResponse.class);
     when(containerManager.startContainers((StartContainersRequest) any()))
       .thenReturn(mockResponse);
-    final DrainDispatcher dispatcher = new DrainDispatcher();
 
     MockRM rm = new MockRMWithCustomAMLauncher(conf, containerManager) {
       protected ClientRMService createClientRMService() {
@@ -446,26 +441,21 @@ public class TestClientToAMTokens extends ParameterizedSchedulerTestBase {
       };
 
       @Override
-      protected Dispatcher createDispatcher() {
-        return dispatcher;
-      }
-
-      @Override
       protected void doSecureLogin() throws IOException {
       }
     };
     rm.start();
 
     // Submit an app
-    RMApp app = rm.submitApp(1024);
+    RMApp app = MockRMAppSubmitter.submitWithMemory(1024, rm);
 
     // Set up a node.
     MockNM nm1 = rm.registerNode("localhost:1234", 3072);
     nm1.nodeHeartbeat(true);
-    dispatcher.await();
+    rm.drainEvents();
 
     nm1.nodeHeartbeat(true);
-    dispatcher.await();
+    rm.drainEvents();
 
     ApplicationAttemptId appAttempt = app.getCurrentAppAttempt().getAppAttemptId();
     final MockAM mockAM =

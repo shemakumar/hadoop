@@ -18,6 +18,8 @@
 
 package org.apache.hadoop.hdfs.server.namenode;
 
+import static org.apache.hadoop.hdfs.protocol.BlockType.CONTIGUOUS;
+import static org.apache.hadoop.hdfs.protocol.BlockType.STRIPED;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
@@ -29,9 +31,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.ContentSummary;
 import org.apache.hadoop.fs.DirectoryListingStartAfterNotFoundException;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -43,6 +46,7 @@ import org.apache.hadoop.fs.Options;
 import org.apache.hadoop.fs.Options.Rename;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathIsNotDirectoryException;
+import org.apache.hadoop.fs.QuotaUsage;
 import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.fs.XAttr;
 import org.apache.hadoop.fs.permission.FsAction;
@@ -55,6 +59,7 @@ import org.apache.hadoop.hdfs.DFSUtil;
 import org.apache.hadoop.hdfs.DFSUtilClient;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
+import org.apache.hadoop.hdfs.StripedFileTestUtil;
 import org.apache.hadoop.hdfs.protocol.DirectoryListing;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
@@ -68,6 +73,7 @@ import org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot;
 import org.apache.hadoop.hdfs.server.protocol.NamenodeProtocols;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.util.Time;
+import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
 
@@ -78,7 +84,7 @@ public class TestINodeFile {
   static {
     FileSystem.enableSymlinks();
   }
-  public static final Log LOG = LogFactory.getLog(TestINodeFile.class);
+  public static final Logger LOG = LoggerFactory.getLogger(TestINodeFile.class);
 
   static final short BLOCKBITS = 48;
   static final long BLKSIZE_MAXVALUE = ~(0xffffL << BLOCKBITS);
@@ -102,9 +108,17 @@ public class TestINodeFile {
         null, replication, preferredBlockSize);
   }
 
+  INodeFile createStripedINodeFile(long preferredBlockSize) {
+    return new INodeFile(HdfsConstants.GRANDFATHER_INODE_ID, null, perm, 0L, 0L,
+        null, null,
+        StripedFileTestUtil.getDefaultECPolicy().getId(),
+        preferredBlockSize,
+        HdfsConstants.WARM_STORAGE_POLICY_ID, STRIPED);
+  }
+
   private static INodeFile createINodeFile(byte storagePolicyID) {
     return new INodeFile(HdfsConstants.GRANDFATHER_INODE_ID, null, perm, 0L, 0L,
-        null, (short)3, 1024L, storagePolicyID, false);
+        null, (short)3, null, 1024L, storagePolicyID, CONTIGUOUS);
   }
 
   @Test
@@ -123,6 +137,61 @@ public class TestINodeFile {
   @Test(expected=IllegalArgumentException.class)
   public void testStoragePolicyIdAboveUpperBound () throws IllegalArgumentException {
     createINodeFile((byte)16);
+  }
+
+  @Test
+  public void testContiguousLayoutRedundancy() {
+    INodeFile inodeFile;
+    try {
+      new INodeFile(HdfsConstants.GRANDFATHER_INODE_ID,
+          null, perm, 0L, 0L, null, new Short((short) 3) /*replication*/,
+          StripedFileTestUtil.getDefaultECPolicy().getId() /*ec policy*/,
+          preferredBlockSize, HdfsConstants.WARM_STORAGE_POLICY_ID, CONTIGUOUS);
+      fail("INodeFile construction should fail when both replication and " +
+          "ECPolicy requested!");
+    } catch (IllegalArgumentException iae) {
+      LOG.info("Expected exception: ", iae);
+    }
+
+    try {
+      new INodeFile(HdfsConstants.GRANDFATHER_INODE_ID,
+          null, perm, 0L, 0L, null, null /*replication*/, null /*ec policy*/,
+          preferredBlockSize, HdfsConstants.WARM_STORAGE_POLICY_ID, CONTIGUOUS);
+      fail("INodeFile construction should fail when replication param not " +
+          "provided for contiguous layout!");
+    } catch (IllegalArgumentException iae) {
+      LOG.info("Expected exception: ", iae);
+    }
+
+    try {
+      new INodeFile(HdfsConstants.GRANDFATHER_INODE_ID,
+          null, perm, 0L, 0L, null, Short.MAX_VALUE /*replication*/,
+          null /*ec policy*/, preferredBlockSize,
+          HdfsConstants.WARM_STORAGE_POLICY_ID, CONTIGUOUS);
+      fail("INodeFile construction should fail when replication param is " +
+          "beyond the range supported!");
+    } catch (IllegalArgumentException iae) {
+      LOG.info("Expected exception: ", iae);
+    }
+
+    final Short replication = new Short((short) 3);
+    try {
+      new INodeFile(HdfsConstants.GRANDFATHER_INODE_ID,
+          null, perm, 0L, 0L, null, replication, null /*ec policy*/,
+          preferredBlockSize, HdfsConstants.WARM_STORAGE_POLICY_ID, STRIPED);
+      fail("INodeFile construction should fail when replication param is " +
+          "provided for striped layout!");
+    } catch (IllegalArgumentException iae) {
+      LOG.info("Expected exception: ", iae);
+    }
+
+    inodeFile = new INodeFile(HdfsConstants.GRANDFATHER_INODE_ID,
+        null, perm, 0L, 0L, null, replication, null /*ec policy*/,
+        preferredBlockSize, HdfsConstants.WARM_STORAGE_POLICY_ID, CONTIGUOUS);
+
+    Assert.assertTrue(!inodeFile.isStriped());
+    Assert.assertEquals(replication.shortValue(),
+        inodeFile.getFileReplication());
   }
 
   /**
@@ -215,14 +284,24 @@ public class TestINodeFile {
 
     dir.addChild(inf);
     assertEquals("d"+Path.SEPARATOR+"f", inf.getFullPathName());
-    
+
     root.addChild(dir);
     assertEquals(Path.SEPARATOR+"d"+Path.SEPARATOR+"f", inf.getFullPathName());
     assertEquals(Path.SEPARATOR+"d", dir.getFullPathName());
 
     assertEquals(Path.SEPARATOR, root.getFullPathName());
   }
-  
+
+  @Test
+  public void testGetBlockType() {
+    replication = 3;
+    preferredBlockSize = 128*1024*1024;
+    INodeFile inf = createINodeFile(replication, preferredBlockSize);
+    assertEquals(inf.getBlockType(), CONTIGUOUS);
+    INodeFile striped = createStripedINodeFile(preferredBlockSize);
+    assertEquals(striped.getBlockType(), STRIPED);
+  }
+
   /**
    * FSDirectory#unprotectedSetQuota creates a new INodeDirectoryWithQuota to
    * replace the original INodeDirectory. Before HDFS-4243, the parent field of
@@ -989,7 +1068,7 @@ public class TestINodeFile {
       assertTrue(parentId == status.getFileId());
       
     } finally {
-      IOUtils.cleanup(LOG, client);
+      IOUtils.cleanupWithLogger(LOG, client);
       if (cluster != null) {
         cluster.shutdown();
       }
@@ -1154,5 +1233,36 @@ public class TestINodeFile {
     assertEquals(1, toBeCleared.getBlocks().length);
     toBeCleared.clearBlocks();
     assertTrue(toBeCleared.getBlocks().length == 0);
+  }
+
+  @Test
+  public void testConcat() throws IOException {
+    Configuration conf = new Configuration();
+    try (MiniDFSCluster cluster = new MiniDFSCluster.Builder(conf).build()) {
+      cluster.waitActive();
+      DistributedFileSystem dfs = cluster.getFileSystem();
+      String dir = "/testConcat";
+      dfs.mkdirs(new Path(dir), FsPermission.getDirDefault());
+      dfs.setQuota(new Path(dir), 100L, HdfsConstants.QUOTA_DONT_SET);
+
+      // Create 4 files
+      Path trg = new Path(dir + "/file");
+      DFSTestUtil.createFile(dfs, trg, 512, (short) 1, 0);
+      Path[] srcs = new Path[4];
+      for (int i = 0; i < 4; i++) {
+        srcs[i] = new Path(dir + "/file" + i);
+        DFSTestUtil.createFile(dfs, srcs[i], 512, (short) 1, 0);
+      }
+
+      // Concat file1, file2, file3 to file0
+      dfs.concat(trg, srcs);
+
+      // Check the file and directory count and consumed space
+      ContentSummary cs = dfs.getContentSummary(new Path(dir));
+      QuotaUsage qu = dfs.getQuotaUsage(new Path(dir));
+
+      Assert.assertEquals(cs.getFileCount() + cs.getDirectoryCount(),
+          qu.getFileAndDirectoryCount());
+    }
   }
 }

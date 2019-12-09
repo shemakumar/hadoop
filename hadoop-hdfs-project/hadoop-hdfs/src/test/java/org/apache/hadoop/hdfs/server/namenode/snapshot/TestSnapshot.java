@@ -19,6 +19,7 @@ package org.apache.hadoop.hdfs.server.namenode.snapshot;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -59,7 +60,7 @@ import org.apache.hadoop.hdfs.tools.offlineImageViewer.PBImageXmlWriter;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.test.GenericTestUtils;
 import org.apache.hadoop.util.Time;
-import org.apache.log4j.Level;
+import org.slf4j.event.Level;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -73,7 +74,7 @@ import org.junit.rules.ExpectedException;
  */
 public class TestSnapshot {
   {
-    GenericTestUtils.setLogLevel(INode.LOG, Level.ALL);
+    GenericTestUtils.setLogLevel(INode.LOG, Level.TRACE);
     SnapshotTestHelper.disableLogs();
   }
 
@@ -435,13 +436,13 @@ public class TestSnapshot {
     hdfs.allowSnapshot(root);
     rootNode = fsdir.getINode4Write(root.toString()).asDirectory();
     assertTrue(rootNode.isSnapshottable());
-    assertEquals(DirectorySnapshottableFeature.SNAPSHOT_LIMIT,
+    assertEquals(DirectorySnapshottableFeature.SNAPSHOT_QUOTA_DEFAULT,
         rootNode.getDirectorySnapshottableFeature().getSnapshotQuota());
     // call allowSnapshot again
     hdfs.allowSnapshot(root);
     rootNode = fsdir.getINode4Write(root.toString()).asDirectory();
     assertTrue(rootNode.isSnapshottable());
-    assertEquals(DirectorySnapshottableFeature.SNAPSHOT_LIMIT,
+    assertEquals(DirectorySnapshottableFeature.SNAPSHOT_QUOTA_DEFAULT,
         rootNode.getDirectorySnapshottableFeature().getSnapshotQuota());
     
     // disallowSnapshot on dir
@@ -454,6 +455,39 @@ public class TestSnapshot {
     rootNode = fsdir.getINode4Write(root.toString()).asDirectory();
     assertTrue(rootNode.isSnapshottable());
     assertEquals(0, rootNode.getDirectorySnapshottableFeature().getSnapshotQuota());
+  }
+
+  @Test(timeout = 60000)
+  public void testSnapshotMtime() throws Exception {
+    Path dir = new Path("/dir");
+    Path sub = new Path(dir, "sub");
+    Path subFile = new Path(sub, "file");
+    DFSTestUtil.createFile(hdfs, subFile, BLOCKSIZE, REPLICATION, seed);
+
+    hdfs.allowSnapshot(dir);
+    Path snapshotPath = hdfs.createSnapshot(dir, "s1");
+    FileStatus oldSnapshotStatus = hdfs.getFileStatus(snapshotPath);
+    cluster.restartNameNodes();
+    FileStatus newSnapshotStatus = hdfs.getFileStatus(snapshotPath);
+    assertEquals(oldSnapshotStatus.getModificationTime(),
+        newSnapshotStatus.getModificationTime());
+  }
+
+  @Test(timeout = 60000)
+  public void testRenameSnapshotMtime() throws Exception {
+    Path dir = new Path("/dir");
+    Path sub = new Path(dir, "sub");
+    Path subFile = new Path(sub, "file");
+    DFSTestUtil.createFile(hdfs, subFile, BLOCKSIZE, REPLICATION, seed);
+
+    hdfs.allowSnapshot(dir);
+    Path snapshotPath = hdfs.createSnapshot(dir, "s1");
+    FileStatus oldSnapshotStatus = hdfs.getFileStatus(snapshotPath);
+    hdfs.renameSnapshot(dir, "s1", "s2");
+    Path snapshotRenamePath = new Path("/dir/.snapshot/s2");
+    FileStatus newSnapshotStatus = hdfs.getFileStatus(snapshotRenamePath);
+    assertNotEquals(oldSnapshotStatus.getModificationTime(),
+        newSnapshotStatus.getModificationTime());
   }
 
   /**

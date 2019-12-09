@@ -19,13 +19,14 @@ package org.apache.hadoop.hdfs.server.namenode;
 
 import com.google.common.base.Preconditions;
 import org.apache.hadoop.fs.FileAlreadyExistsException;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.InvalidPathException;
 import org.apache.hadoop.fs.Options;
 import org.apache.hadoop.fs.ParentNotDirectoryException;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsAction;
+import org.apache.hadoop.hdfs.DFSUtil;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
-import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
 import org.apache.hadoop.hdfs.protocol.SnapshotException;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
@@ -47,14 +48,12 @@ import static org.apache.hadoop.hdfs.protocol.FSLimitException.PathComponentTooL
 class FSDirRenameOp {
   @Deprecated
   static RenameResult renameToInt(
-      FSDirectory fsd, final String src, final String dst,
-      boolean logRetryCache)
-      throws IOException {
+      FSDirectory fsd, FSPermissionChecker pc, final String src,
+      final String dst, boolean logRetryCache) throws IOException {
     if (NameNode.stateChangeLog.isDebugEnabled()) {
       NameNode.stateChangeLog.debug("DIR* NameSystem.renameTo: " + src +
           " to " + dst);
     }
-    FSPermissionChecker pc = fsd.getPermissionChecker();
 
     // Rename does not operate on link targets
     // Do not resolveLink when checking permissions of src and dst
@@ -78,7 +77,12 @@ class FSDirRenameOp {
     while(src.getINode(i) == dst.getINode(i)) { i++; }
     // src[i - 1] is the last common ancestor.
     BlockStoragePolicySuite bsps = fsd.getBlockStoragePolicySuite();
-    final QuotaCounts delta = src.getLastINode().computeQuotaUsage(bsps);
+    // Assume dstParent existence check done by callers.
+    INode dstParent = dst.getINode(-2);
+    // Use the destination parent's storage policy for quota delta verify.
+    final QuotaCounts delta = src.getLastINode()
+        .computeQuotaUsage(bsps, dstParent.getStoragePolicyID(), false,
+            Snapshot.CURRENT_STATE_ID);
 
     // Reduce the required quota by dst that is being removed
     final INode dstINode = dst.getLastINode();
@@ -140,8 +144,8 @@ class FSDirRenameOp {
    * Change a path name
    *
    * @param fsd FSDirectory
-   * @param src source path
-   * @param dst destination path
+   * @param srcIIP source path
+   * @param dstIIP destination path
    * @return true INodesInPath if rename succeeds; null otherwise
    * @deprecated See {@link #renameToInt(FSDirectory, String, String,
    * boolean, Options.Rename...)}
@@ -152,8 +156,9 @@ class FSDirRenameOp {
       throws IOException {
     assert fsd.hasWriteLock();
     final INode srcInode = srcIIP.getLastINode();
+    List<INodeDirectory> snapshottableDirs = new ArrayList<>();
     try {
-      validateRenameSource(fsd, srcIIP);
+      validateRenameSource(fsd, srcIIP, snapshottableDirs);
     } catch (SnapshotException e) {
       throw e;
     } catch (IOException ignored) {
@@ -186,6 +191,8 @@ class FSDirRenameOp {
           "parent does not exist");
       return null;
     }
+
+    validateNestSnapshot(fsd, src, dstParent.asDirectory(), snapshottableDirs);
 
     fsd.ezManager.checkMoveValidity(srcIIP, dstIIP);
     // Ensure dst has quota to accommodate rename
@@ -230,8 +237,8 @@ class FSDirRenameOp {
    * The new rename which has the POSIX semantic.
    */
   static RenameResult renameToInt(
-      FSDirectory fsd, final String srcArg, final String dstArg,
-      boolean logRetryCache, Options.Rename... options)
+      FSDirectory fsd, FSPermissionChecker pc, final String srcArg,
+      final String dstArg, boolean logRetryCache, Options.Rename... options)
       throws IOException {
     String src = srcArg;
     String dst = dstArg;
@@ -239,7 +246,6 @@ class FSDirRenameOp {
       NameNode.stateChangeLog.debug("DIR* NameSystem.renameTo: with options -" +
           " " + src + " to " + dst);
     }
-    final FSPermissionChecker pc = fsd.getPermissionChecker();
 
     BlocksMapUpdateInfo collectedBlocks = new BlocksMapUpdateInfo();
     // returns resolved path
@@ -340,8 +346,8 @@ class FSDirRenameOp {
    * for details related to rename semantics and exceptions.
    *
    * @param fsd             FSDirectory
-   * @param src             source path
-   * @param dst             destination path
+   * @param srcIIP          source path
+   * @param dstIIP          destination path
    * @param timestamp       modification time
    * @param collectedBlocks blocks to be removed
    * @param options         Rename options
@@ -359,7 +365,8 @@ class FSDirRenameOp {
     final String dst = dstIIP.getPath();
     final String error;
     final INode srcInode = srcIIP.getLastINode();
-    validateRenameSource(fsd, srcIIP);
+    List<INodeDirectory> srcSnapshottableDirs = new ArrayList<>();
+    validateRenameSource(fsd, srcIIP, srcSnapshottableDirs);
 
     // validate the destination
     if (dst.equals(src)) {
@@ -378,10 +385,10 @@ class FSDirRenameOp {
     BlockStoragePolicySuite bsps = fsd.getBlockStoragePolicySuite();
     fsd.ezManager.checkMoveValidity(srcIIP, dstIIP);
     final INode dstInode = dstIIP.getLastINode();
-    List<INodeDirectory> snapshottableDirs = new ArrayList<>();
+    List<INodeDirectory> dstSnapshottableDirs = new ArrayList<>();
     if (dstInode != null) { // Destination exists
       validateOverwrite(src, dst, overwrite, srcInode, dstInode);
-      FSDirSnapshotOp.checkSnapshot(fsd, dstIIP, snapshottableDirs);
+      FSDirSnapshotOp.checkSnapshot(fsd, dstIIP, dstSnapshottableDirs);
     }
 
     INode dstParent = dstIIP.getINode(-2);
@@ -397,6 +404,9 @@ class FSDirRenameOp {
           error);
       throw new ParentNotDirectoryException(error);
     }
+
+    validateNestSnapshot(fsd, src,
+            dstParent.asDirectory(), srcSnapshottableDirs);
 
     // Ensure dst has quota to accommodate rename
     verifyFsLimitsForRename(fsd, srcIIP, dstIIP);
@@ -437,10 +447,10 @@ class FSDirRenameOp {
           }
         }
 
-        if (snapshottableDirs.size() > 0) {
+        if (dstSnapshottableDirs.size() > 0) {
           // There are snapshottable directories (without snapshots) to be
           // deleted. Need to update the SnapshotManager.
-          fsd.getFSNamesystem().removeSnapshottableDirs(snapshottableDirs);
+          fsd.getFSNamesystem().removeSnapshottableDirs(dstSnapshottableDirs);
         }
 
         tx.updateQuotasInSourceTree(bsps);
@@ -468,6 +478,10 @@ class FSDirRenameOp {
   private static RenameResult renameTo(FSDirectory fsd, FSPermissionChecker pc,
       INodesInPath srcIIP, INodesInPath dstIIP, boolean logRetryCache)
           throws IOException {
+    if(fsd.isNonEmptyDirectory(srcIIP)) {
+      DFSUtil.checkProtectedDescendants(fsd, srcIIP);
+    }
+
     if (fsd.isPermissionEnabled()) {
       // Check write access to parent of src
       fsd.checkPermission(pc, srcIIP, false, null, FsAction.WRITE, null, null,
@@ -554,7 +568,8 @@ class FSDirRenameOp {
   }
 
   private static void validateRenameSource(FSDirectory fsd,
-      INodesInPath srcIIP) throws IOException {
+      INodesInPath srcIIP, List<INodeDirectory> snapshottableDirs)
+      throws IOException {
     String error;
     final INode srcInode = srcIIP.getLastINode();
     // validate source
@@ -572,7 +587,32 @@ class FSDirRenameOp {
     }
     // srcInode and its subtree cannot contain snapshottable directories with
     // snapshots
-    FSDirSnapshotOp.checkSnapshot(fsd, srcIIP, null);
+    FSDirSnapshotOp.checkSnapshot(fsd, srcIIP, snapshottableDirs);
+  }
+
+  private static void validateNestSnapshot(FSDirectory fsd, String srcPath,
+      INodeDirectory dstParent, List<INodeDirectory> snapshottableDirs)
+      throws SnapshotException {
+
+    if (fsd.getFSNamesystem().getSnapshotManager().isAllowNestedSnapshots()) {
+      return;
+    }
+
+    /*
+     * snapshottableDirs is a list of snapshottable directory (child of rename
+     * src) which do not have snapshots yet. If this list is not empty, that
+     * means rename src has snapshottable descendant directories.
+     */
+    if (snapshottableDirs != null && snapshottableDirs.size() > 0) {
+      if (fsd.getFSNamesystem().getSnapshotManager()
+              .isDescendantOfSnapshotRoot(dstParent)) {
+        String dstPath = dstParent.getFullPathName();
+        throw new SnapshotException("Unable to rename because " + srcPath
+                + " has snapshottable descendant directories and " + dstPath
+                + " is a descent of a snapshottable directory, and HDFS does"
+                + " not support nested snapshottable directory.");
+      }
+    }
   }
 
   private static class RenameOperation {
@@ -591,8 +631,7 @@ class FSDirRenameOp {
     private INode srcChild;
     private INode oldDstChild;
 
-    RenameOperation(FSDirectory fsd, INodesInPath srcIIP, INodesInPath dstIIP)
-        throws QuotaExceededException {
+    RenameOperation(FSDirectory fsd, INodesInPath srcIIP, INodesInPath dstIIP) {
       this.fsd = fsd;
       this.srcIIP = srcIIP;
       this.dstIIP = dstIIP;
@@ -693,13 +732,13 @@ class FSDirRenameOp {
       return fsd.addLastINodeNoQuotaCheck(dstParentIIP, toDst);
     }
 
-    void updateMtimeAndLease(long timestamp) throws QuotaExceededException {
+    void updateMtimeAndLease(long timestamp) {
       srcParent.updateModificationTime(timestamp, srcIIP.getLatestSnapshotId());
       final INode dstParent = dstParentIIP.getLastINode();
       dstParent.updateModificationTime(timestamp, dstIIP.getLatestSnapshotId());
     }
 
-    void restoreSource() throws QuotaExceededException {
+    void restoreSource() {
       // Rename failed - restore src
       final INode oldSrcChild = srcChild;
       // put it back
@@ -726,7 +765,7 @@ class FSDirRenameOp {
       }
     }
 
-    void restoreDst(BlockStoragePolicySuite bsps) throws QuotaExceededException {
+    void restoreDst(BlockStoragePolicySuite bsps) {
       Preconditions.checkState(oldDstChild != null);
       final INodeDirectory dstParent = dstParentIIP.getLastINode().asDirectory();
       if (dstParent.isWithSnapshot()) {
@@ -742,8 +781,8 @@ class FSDirRenameOp {
       }
     }
 
-    boolean cleanDst(BlockStoragePolicySuite bsps, BlocksMapUpdateInfo collectedBlocks)
-        throws QuotaExceededException {
+    boolean cleanDst(
+        BlockStoragePolicySuite bsps, BlocksMapUpdateInfo collectedBlocks) {
       Preconditions.checkState(oldDstChild != null);
       List<INode> removedINodes = new ChunkedArrayList<>();
       List<Long> removedUCFiles = new ChunkedArrayList<>();
@@ -766,13 +805,13 @@ class FSDirRenameOp {
       return filesDeleted;
     }
 
-    void updateQuotasInSourceTree(BlockStoragePolicySuite bsps) throws QuotaExceededException {
+    void updateQuotasInSourceTree(BlockStoragePolicySuite bsps) {
       // update the quota usage in src tree
       if (isSrcInSnapshot) {
         // get the counts after rename
         QuotaCounts newSrcCounts = srcChild.computeQuotaUsage(bsps, false);
         newSrcCounts.subtract(oldSrcCounts);
-        srcParent.addSpaceConsumed(newSrcCounts, false);
+        srcParent.addSpaceConsumed(newSrcCounts);
       }
     }
   }
@@ -781,18 +820,18 @@ class FSDirRenameOp {
       INodesInPath dst, boolean filesDeleted,
       BlocksMapUpdateInfo collectedBlocks) throws IOException {
     boolean success = (dst != null);
-    HdfsFileStatus auditStat = success ? fsd.getAuditFileInfo(dst) : null;
+    FileStatus auditStat = success ? fsd.getAuditFileInfo(dst) : null;
     return new RenameResult(
         success, auditStat, filesDeleted, collectedBlocks);
   }
 
   static class RenameResult {
     final boolean success;
-    final HdfsFileStatus auditStat;
+    final FileStatus auditStat;
     final boolean filesDeleted;
     final BlocksMapUpdateInfo collectedBlocks;
 
-    RenameResult(boolean success, HdfsFileStatus auditStat,
+    RenameResult(boolean success, FileStatus auditStat,
         boolean filesDeleted, BlocksMapUpdateInfo collectedBlocks) {
       this.success = success;
       this.auditStat = auditStat;

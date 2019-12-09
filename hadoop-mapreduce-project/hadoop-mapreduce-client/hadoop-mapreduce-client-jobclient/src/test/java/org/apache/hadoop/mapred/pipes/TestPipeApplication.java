@@ -137,7 +137,7 @@ public class TestPipeApplication {
       if (psw != null) {
         // remove password files
         for (File file : psw) {
-          file.deleteOnExit();
+          file.delete();
         }
       }
 
@@ -231,7 +231,7 @@ public class TestPipeApplication {
       if (psw != null) {
         // remove password files
         for (File file : psw) {
-          file.deleteOnExit();
+          file.delete();
         }
       }
     }
@@ -307,7 +307,9 @@ public class TestPipeApplication {
           "-D <property=value>               define a value for a given "
               + "property"));
       assertTrue(out.toString()
-          .contains("-fs <local|namenode:port>         specify a namenode"));
+          .contains("-fs <file:///|hdfs://namenode:port> "
+              + "specify default filesystem URL to use, overrides "
+              + "'fs.defaultFS' property from configurations."));
       assertTrue(out.toString().contains(
           "-jt <local|resourcemanager:port>  specify a ResourceManager"));
       assertTrue(out.toString().contains(
@@ -326,7 +328,7 @@ public class TestPipeApplication {
       if (psw != null) {
         // remove password files
         for (File file : psw) {
-          file.deleteOnExit();
+          file.delete();
         }
       }
     }
@@ -426,7 +428,7 @@ public class TestPipeApplication {
       if (psw != null) {
         // remove password files
         for (File file : psw) {
-          file.deleteOnExit();
+          file.delete();
         }
       }
     }

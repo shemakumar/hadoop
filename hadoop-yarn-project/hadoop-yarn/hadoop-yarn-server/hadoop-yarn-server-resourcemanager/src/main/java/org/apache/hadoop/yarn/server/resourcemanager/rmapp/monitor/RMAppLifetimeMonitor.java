@@ -22,8 +22,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ApplicationTimeoutType;
@@ -42,7 +42,8 @@ import org.apache.hadoop.yarn.util.SystemClock;
 public class RMAppLifetimeMonitor
     extends AbstractLivelinessMonitor<RMAppToMonitor> {
 
-  private static final Log LOG = LogFactory.getLog(RMAppLifetimeMonitor.class);
+  private static final Logger LOG =
+      LoggerFactory.getLogger(RMAppLifetimeMonitor.class);
 
   private RMContext rmContext;
 
@@ -76,8 +77,8 @@ public class RMAppLifetimeMonitor
     if (app == null) {
       return;
     }
-    String diagnostics =
-        "Application killed due to exceeding its lifetime period";
+    String diagnostics = "Application is killed by ResourceManager as it"
+        + " has exceeded the lifetime period.";
     rmContext.getDispatcher().getEventHandler()
         .handle(new RMAppEvent(appId, RMAppEventType.KILL, diagnostics));
   }
