@@ -604,8 +604,7 @@ public class RMContainerImpl implements RMContainer {
 
       // Tell the app
       container.eventHandler.handle(new RMAppRunningOnNodeEvent(container
-          .getApplicationAttemptId().getApplicationId(), container.nodeId,
-          true));
+          .getApplicationAttemptId().getApplicationId(), container.nodeId));
 
       publishNonAMContainerEventstoATS(container);
     }
