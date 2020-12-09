@@ -163,7 +163,7 @@
     <dependency>
       <groupId>com.flipkart.fdp</groupId>
       <artifactId>greensight-timeline-collector</artifactId>
-      <version>1.0.0</version>
+      <version>1.0.1</version>
     </dependency>
 
     <!-- 'mvn dependency:analyze' fails to detect use of this dependency -->
