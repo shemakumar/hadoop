@@ -159,6 +159,12 @@
       <groupId>org.objenesis</groupId>
       <artifactId>objenesis</artifactId>
     </dependency>
+     
+    <dependency>
+      <groupId>com.flipkart.fdp</groupId>
+      <artifactId>greensight-timeline-collector</artifactId>
+      <version>1.0.0</version>
+    </dependency>
 
     <!-- 'mvn dependency:analyze' fails to detect use of this dependency -->
     <dependency>
