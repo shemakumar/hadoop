@@ -159,11 +159,11 @@
       <groupId>org.objenesis</groupId>
       <artifactId>objenesis</artifactId>
     </dependency>
-     
+
     <dependency>
       <groupId>com.flipkart.fdp</groupId>
       <artifactId>greensight-timeline-collector</artifactId>
-      <version>1.0.2</version>
+      <version>1.0.5</version>
     </dependency>
 
     <!-- 'mvn dependency:analyze' fails to detect use of this dependency -->
