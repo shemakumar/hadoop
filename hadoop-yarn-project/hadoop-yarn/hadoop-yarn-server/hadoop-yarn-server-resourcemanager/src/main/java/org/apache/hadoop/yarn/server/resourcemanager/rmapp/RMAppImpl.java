@@ -1058,10 +1058,8 @@ public class RMAppImpl implements RMApp, Recoverable {
       // otherwise, add it to ranNodes for further process
       app.ranNodes.add(nodeAddedEvent.getNodeId());
 
-      if (!nodeAddedEvent.getFromAcquiredState()) {
-        app.logAggregation.addReportIfNecessary(
-                nodeAddedEvent.getNodeId(), app.getApplicationId());
-      }
+      app.logAggregation.addReportIfNecessary(
+          nodeAddedEvent.getNodeId(), app.getApplicationId());
     }
   }
 
@@ -1740,16 +1738,6 @@ public class RMAppImpl implements RMApp, Recoverable {
 
   public void aggregateLogReport(NodeId nodeId, LogAggregationReport report) {
     logAggregation.aggregateLogReport(nodeId, report, this);
-  }
-
-  @Override
-  public boolean isLogAggregationFinished() {
-    return logAggregation.isFinished();
-  }
-
-  @Override
-  public boolean isLogAggregationEnabled() {
-    return logAggregation.isEnabled();
   }
 
   public String getLogAggregationFailureMessagesForNM(NodeId nodeId) {
